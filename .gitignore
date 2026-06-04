@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+.env
+*.env
+
+# Django
+backend/staticfiles/
+backend/mediafiles/
+
+# ML
+ml/data/*.png
+ml/data/*.tiff
+ml/data/*.ome.tiff
+ml/scripts/scratch/
+*.pth
+
+# Node
+frontend/node_modules/
+frontend/dist/
+
+# Docker
+*.log
+
+# IDE
+.vscode/
+.claude/
+*.swp
