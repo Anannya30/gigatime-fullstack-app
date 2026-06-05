@@ -13,9 +13,9 @@ backend/staticfiles/
 backend/mediafiles/
 
 # ML
-ml/data/*.png
-ml/data/*.tiff
-ml/data/*.ome.tiff
+# Ignore the entire slide-data directory (scoped to ml/data/ so frontend
+# assets elsewhere in the repo are not affected).
+ml/data/
 ml/scripts/scratch/
 *.pth
 
