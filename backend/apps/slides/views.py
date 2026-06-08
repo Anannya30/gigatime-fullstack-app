@@ -10,6 +10,8 @@ from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.audit.utils import log_action
+
 from .models import Slide, SlideResult, SlideStatus
 from .serializers import (
     SlidePatchSerializer,
@@ -81,6 +83,15 @@ class SlideUploadView(APIView):
             tags=data.get("tags") or [],
             status=SlideStatus.CREATED,
         )
+        log_action(
+            user=request.user,
+            action="slide.upload",
+            resource_type="Slide",
+            resource_id=slide.id,
+            request=request,
+            payload_snapshot={"filename": slide.filename},
+            response_status=status.HTTP_201_CREATED,
+        )
         return Response(SlideSerializer(slide).data, status=status.HTTP_201_CREATED)
 
 
@@ -119,6 +130,15 @@ class SlideBatchUploadView(APIView):
                     status=SlideStatus.CREATED,
                 )
             )
+        log_action(
+            user=request.user,
+            action="slide.batch_upload",
+            resource_type="Slide",
+            resource_id=",".join(str(s.id) for s in slides),
+            request=request,
+            payload_snapshot={"count": len(slides)},
+            response_status=status.HTTP_201_CREATED,
+        )
         return Response(
             SlideSerializer(slides, many=True).data, status=status.HTTP_201_CREATED
         )
@@ -132,6 +152,15 @@ class SlidePatchView(OwnerSlideMixin, APIView):
         serializer = SlidePatchSerializer(slide, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
+        log_action(
+            user=request.user,
+            action="slide.update",
+            resource_type="Slide",
+            resource_id=slide.id,
+            request=request,
+            payload_snapshot=dict(serializer.validated_data),
+            response_status=status.HTTP_200_OK,
+        )
         return Response(SlideSerializer(slide).data, status=status.HTTP_200_OK)
 
 
@@ -144,6 +173,15 @@ class SlideDeleteView(OwnerSlideMixin, APIView):
         slide.deleted_at = timezone.now()
         slide.deleted_by = request.user
         slide.save(update_fields=["is_deleted", "deleted_at", "deleted_by"])
+        log_action(
+            user=request.user,
+            action="slide.delete",
+            resource_type="Slide",
+            resource_id=slide.id,
+            request=request,
+            payload_snapshot={},
+            response_status=status.HTTP_204_NO_CONTENT,
+        )
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 

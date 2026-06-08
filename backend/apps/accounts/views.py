@@ -6,6 +6,8 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenRefreshView
 
+from apps.audit.utils import log_action
+
 from .models import User
 from .serializers import GoogleAuthSerializer, UserSerializer
 
@@ -71,6 +73,15 @@ class GoogleLoginView(APIView):
         user.save()
 
         tokens = _tokens_for_user(user)
+        log_action(
+            user=user,
+            action="auth.google_login",
+            resource_type="User",
+            resource_id=user.id,
+            request=request,
+            payload_snapshot={"email": email},
+            response_status=status.HTTP_200_OK,
+        )
         return Response(
             {
                 "access": tokens["access"],

@@ -3,6 +3,7 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.audit.utils import log_action
 from apps.slides.models import Slide
 
 from .models import BatchJob
@@ -33,6 +34,15 @@ class BatchJobCreateView(APIView):
 
         run_batch_inference.delay(str(batch_job.id))
 
+        log_action(
+            user=request.user,
+            action="inference.batch_create",
+            resource_type="BatchJob",
+            resource_id=batch_job.id,
+            request=request,
+            payload_snapshot={"slides": [str(s.id) for s in slides]},
+            response_status=status.HTTP_201_CREATED,
+        )
         return Response(
             {"id": str(batch_job.id), "status": batch_job.status},
             status=status.HTTP_201_CREATED,
