@@ -1,0 +1,91 @@
+# GigaTIME full-stack local orchestration.
+# Bring everything up with:  docker compose up --build
+
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-gigatime_db}
+      POSTGRES_USER: ${POSTGRES_USER:-gigatime_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-gigatime_pass}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-gigatime_user} -d ${POSTGRES_DB:-gigatime_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  backend:
+    build: ./backend
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file:
+      - ./backend/.env
+    environment:
+      DJANGO_SETTINGS_MODULE: gigatime_backend.settings.production
+      DB_HOST: db
+      REDIS_URL: redis://redis:6379/0
+      ALLOWED_HOSTS: localhost,127.0.0.1,backend,nginx
+      PYTHONPATH: /app/ml/scripts
+    volumes:
+      # Slide storage persisted on the host.
+      - ./ml/data:/app/ml/data
+      # ML inference code (run_png_inference.py and friends).
+      - ./ml/scripts:/app/ml/scripts
+      - ./ml/environment.yml:/app/ml/environment.yml
+    command: >
+      sh -c "python manage.py migrate --settings=gigatime_backend.settings.production &&
+             gunicorn gigatime_backend.asgi:application -w 4 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000"
+
+  celery:
+    build: ./backend
+    depends_on:
+      - backend
+      - redis
+      - db
+    env_file:
+      - ./backend/.env
+    environment:
+      DJANGO_SETTINGS_MODULE: gigatime_backend.settings.production
+      DB_HOST: db
+      REDIS_URL: redis://redis:6379/0
+      ALLOWED_HOSTS: localhost,127.0.0.1,backend,nginx
+      PYTHONPATH: /app/ml/scripts
+    volumes:
+      - ./ml/data:/app/ml/data
+      - ./ml/scripts:/app/ml/scripts
+      - ./ml/environment.yml:/app/ml/environment.yml
+    command: celery -A gigatime_backend worker --loglevel=info
+
+  frontend:
+    build: ./frontend
+    depends_on:
+      - backend
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf
+    depends_on:
+      - backend
+      - frontend
+
+volumes:
+  postgres_data:
+  redis_data:

@@ -18,8 +18,10 @@ from dotenv import load_dotenv
 # BASE_DIR therefore resolves to the ``backend/`` directory.
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
-# Repository root (the monorepo root), i.e. the parent of ``backend/``.
-REPO_ROOT = BASE_DIR.parent
+# Root under which the ``ml/`` tree (data + scripts) lives. Inside the Docker
+# image the backend is at /app and ml/ is mounted at /app/ml, so REPO_ROOT is
+# BASE_DIR itself and REPO_ROOT/ml/scripts resolves to /app/ml/scripts.
+REPO_ROOT = BASE_DIR
 
 # Load environment variables from backend/.env if present.
 load_dotenv(BASE_DIR / ".env")
@@ -170,8 +172,9 @@ STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
 MEDIA_URL = "media/"
-# Slide files are stored alongside the ML pipeline data directory.
-MEDIA_ROOT = (REPO_ROOT / "ml" / "data").resolve()
+# Slide files are stored alongside the ML pipeline data directory, mounted into
+# the container at /app/ml/data.
+MEDIA_ROOT = "/app/ml/data"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
