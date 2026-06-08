@@ -21,4 +21,5 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/auth/', include('apps.accounts.urls')),
     path('api/slides/', include('apps.slides.urls')),
+    path('api/inference/', include('apps.inference.urls')),
 ]

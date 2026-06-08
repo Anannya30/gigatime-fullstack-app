@@ -64,6 +64,7 @@ THIRD_PARTY_APPS = [
     "rest_framework_simplejwt",
     "corsheaders",
     "channels",
+    "django_celery_results",
     "allauth",
     "allauth.account",
     "allauth.socialaccount",
@@ -206,7 +207,8 @@ CHANNEL_LAYERS = {
 # Celery — Redis broker & result backend
 # ---------------------------------------------------------------------------
 CELERY_BROKER_URL = REDIS_URL
-CELERY_RESULT_BACKEND = REDIS_URL
+# Persist task results in the database via django-celery-results.
+CELERY_RESULT_BACKEND = "django-db"
 CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
