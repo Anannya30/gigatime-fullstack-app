@@ -94,7 +94,7 @@ export default function App() {
   }
   if (!consented) {
     return (
-      <div className="min-h-screen bg-gray-50 px-4 py-12 dark:bg-gray-900">
+      <div className="min-h-screen bg-paper px-4 py-12 dark:bg-gray-900">
         <NoticePage firstView onAccept={acceptNotice} />
       </div>
     )
@@ -124,7 +124,7 @@ export default function App() {
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-gray-50 dark:bg-gray-900">
+    <div className="flex h-screen overflow-hidden bg-paper dark:bg-gray-900">
       <Sidebar
         current={page}
         onNavigate={navigate}

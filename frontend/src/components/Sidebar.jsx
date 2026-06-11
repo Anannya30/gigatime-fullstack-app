@@ -52,8 +52,8 @@ export default function Sidebar({ current, onNavigate, collapsed, onToggleCollap
 
       <aside
         className={cn(
-          'z-40 flex shrink-0 flex-col border-r border-gray-200 bg-white transition-all duration-300 dark:border-gray-800 dark:bg-gray-900',
-          collapsed ? 'w-16' : 'w-[260px]',
+          'z-40 flex shrink-0 flex-col border-r border-paper-line bg-paper transition-all duration-300 dark:border-gray-800 dark:bg-gray-900',
+          collapsed ? 'w-16' : 'w-[calc(260px_+_2cm)]',
           'fixed inset-y-0 left-0 lg:static lg:translate-x-0',
           mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
         )}
@@ -86,7 +86,7 @@ export default function Sidebar({ current, onNavigate, collapsed, onToggleCollap
 
         {/* Recent Slides */}
         {!collapsed && (
-          <div className="mt-2 flex-1 overflow-y-auto border-t border-gray-100 px-3 pt-4 dark:border-gray-800">
+          <div className="mt-2 flex-1 overflow-y-auto border-t border-paper-line px-3 pt-4 dark:border-gray-800">
             <div className="mb-2 flex items-center gap-1.5 px-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
               <Clock className="h-3.5 w-3.5" />
               Recent Slides
@@ -104,7 +104,7 @@ export default function Sidebar({ current, onNavigate, collapsed, onToggleCollap
         {collapsed && <div className="flex-1" />}
 
         {/* Collapse toggle */}
-        <div className="hidden border-t border-gray-100 p-3 dark:border-gray-800 lg:block">
+        <div className="hidden border-t border-paper-line p-3 dark:border-gray-800 lg:block">
           <button type="button" onClick={onToggleCollapse} className="btn-ghost w-full" aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}>
             <ChevronLeft className={cn('h-4 w-4 transition-transform duration-300', collapsed && 'rotate-180')} />
             {!collapsed && <span className="text-xs font-semibold">Collapse</span>}

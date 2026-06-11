@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Bell, ChevronDown, LogOut, Menu, Search, Settings, User } from 'lucide-react'
 import ThemeToggle from './ThemeToggle'
+import ResearchBadge from './ResearchBadge'
 import { cn } from '../utils/helpers'
 import { APP_NAME, PAGES } from '../utils/constants'
 import biostackLogo from '../data/biostack-logo.jpeg'
@@ -8,6 +9,15 @@ import biostackLogo from '../data/biostack-logo.jpeg'
 /** Brand mark: BioStack DNA logo. */
 export function Logo({ className }) {
   return <img src={biostackLogo} alt={`${APP_NAME} logo`} className={cn('object-contain', className)} />
+}
+
+/** Serif notebook wordmark: "Giga" + italic "TIME" (TIME in green when accentTime). */
+export function Wordmark({ className, accentTime = false }) {
+  return (
+    <span className={cn('font-serif text-lg font-bold tracking-tight text-gray-900 dark:text-white', className)}>
+      Giga<span className={cn('italic', accentTime && 'text-brand dark:text-brand-light')}>TIME</span>
+    </span>
+  )
 }
 
 const MOCK_NOTIFICATIONS = [
@@ -32,7 +42,7 @@ export default function Navbar({ user, isDark, onToggleTheme, onToggleSidebar, o
   }, [])
 
   return (
-    <header className="sticky top-0 z-30 h-14 border-b border-gray-100 bg-white dark:border-gray-800 dark:bg-gray-900">
+    <header className="sticky top-0 z-30 h-14 border-b border-paper-line bg-paper dark:border-gray-800 dark:bg-gray-900">
 
       <div className="flex h-full items-center justify-between px-6">
         {/* Left: logo */}
@@ -41,20 +51,21 @@ export default function Navbar({ user, isDark, onToggleTheme, onToggleSidebar, o
             <Menu className="h-5 w-5" />
           </button>
           <button type="button" onClick={() => onNavigate(PAGES.DASHBOARD)} className="flex items-center gap-2">
-            <Logo className="h-7 w-7" />
-            <span className="text-base font-bold tracking-tight text-gray-900 dark:text-white">{APP_NAME}</span>
+            <Wordmark />
           </button>
         </div>
 
         {/* Right cluster */}
         <div className="flex items-center gap-2 sm:gap-3">
+          {/* Persistent compliance badge — shown on every authenticated page */}
+          <ResearchBadge className="hidden md:inline-flex" />
           {/* Search */}
           <div className="relative hidden md:block">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
             <input
               type="text"
               placeholder="Search slides…"
-              className="w-56 rounded-lg border border-gray-200 bg-gray-50 py-1.5 pl-9 pr-3 text-sm text-gray-700 placeholder:text-gray-400 transition-colors focus:border-brand focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand/20 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+              className="w-56 rounded-lg border border-paper-line bg-white py-1.5 pl-9 pr-3 text-sm text-gray-700 placeholder:text-gray-400 transition-colors focus:border-brand focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand/20 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
             />
           </div>
 
@@ -63,7 +74,7 @@ export default function Navbar({ user, isDark, onToggleTheme, onToggleSidebar, o
             <button
               type="button"
               onClick={() => setBellOpen((o) => !o)}
-              className="relative inline-flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 text-gray-500 transition-all hover:border-brand hover:text-brand dark:border-gray-700 dark:text-gray-400"
+              className="relative inline-flex h-9 w-9 items-center justify-center rounded-lg border border-paper-line text-gray-500 transition-all hover:border-brand hover:text-brand dark:border-gray-700 dark:text-gray-400"
               aria-label="Notifications"
             >
               <Bell className="h-[18px] w-[18px]" />

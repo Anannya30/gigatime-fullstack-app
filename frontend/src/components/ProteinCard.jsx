@@ -37,7 +37,7 @@ export default function ProteinCard({ protein }) {
           <span className="text-gray-500 dark:text-gray-400">Marker %</span>
           <span className="font-bold text-gray-900 dark:text-white">{insufficient ? 'N/A' : `${score.toFixed(2)}%`}</span>
         </div>
-        <div className="h-1.5 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
+        <div className="h-1.5 overflow-hidden rounded-full bg-[#F0EBDB] dark:bg-gray-700">
           <div className="h-full rounded-full transition-all duration-700" style={{ width: insufficient ? '100%' : `${pct}%`, backgroundColor: bar, opacity: insufficient ? 0.4 : 1 }} />
         </div>
       </div>

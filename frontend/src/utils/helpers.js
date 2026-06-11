@@ -25,6 +25,21 @@ export function isLiveStatus(status) {
   return Boolean(STATUS_META[status]?.pulse)
 }
 
+/** Confidence tier from a per-channel validation correlation r. */
+export function markerConfidence(r) {
+  if (r == null) return 'VERY LOW'
+  if (r >= 0.8) return 'HIGH'
+  if (r >= 0.4) return 'MODERATE'
+  if (r >= 0.25) return 'LOW'
+  return 'VERY LOW'
+}
+
+/** Muted dot color (notebook palette) for a status tone. */
+export function statusDotColor(status) {
+  const tone = STATUS_META[status]?.tone || 'gray'
+  return { green: '#2D6A4F', orange: '#B45309', red: '#B91C1C', gray: '#9CA3AF' }[tone] || '#9CA3AF'
+}
+
 /**
  * Confidence tier for a Positive Marker % value (0–100 scale) or insufficient
  * sample. Returns { label, classes, barColor }.

@@ -4,7 +4,7 @@ import { cn, clamp } from '../utils/helpers'
 
 function Stat({ icon: Icon, label, value }) {
   return (
-    <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 dark:border-gray-700 dark:bg-gray-900/40">
+    <div className="rounded-[5px] border border-paper-line bg-paper px-3 py-2.5 dark:border-gray-700 dark:bg-gray-900/40">
       <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
         <Icon className="h-3.5 w-3.5" />
         {label}
@@ -57,7 +57,7 @@ export default function ProgressCard({ progress, live = false }) {
           {state.tilesProcessed.toLocaleString()} / {state.totalTiles.toLocaleString()}
         </span>
       </div>
-      <div className="h-2.5 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
+      <div className="h-2.5 overflow-hidden rounded-full bg-[#F0EBDB] dark:bg-gray-700">
         <div className="h-full rounded-full bg-brand transition-all duration-700" style={{ width: `${pct}%` }} />
       </div>
       <p className="mt-1 text-right text-xs font-semibold text-brand">{pct}%</p>

@@ -8,9 +8,28 @@ const ICON_TONES = {
 }
 
 /** KPI card: small uppercase label, large bold number, subtle icon top-right. */
-export default function StatsCard({ icon: Icon, label, value, tone = 'gray', loading = false }) {
+export default function StatsCard({ icon: Icon, label, value, tone = 'gray', loading = false, horizontal = false, className }) {
+  if (horizontal) {
+    // Compact horizontal tile: icon + label on the left, number on the right.
+    return (
+      <div className={cn('card-hover group flex items-center justify-between gap-4 p-4', className)}>
+        <div className="flex min-w-0 items-center gap-3">
+          <span className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-transform duration-200 group-hover:scale-110', ICON_TONES[tone])}>
+            {Icon && <Icon className="h-4 w-4" />}
+          </span>
+          <span className="truncate text-xs font-medium uppercase tracking-wide text-gray-400">{label}</span>
+        </div>
+        {loading ? (
+          <div className="skeleton h-8 w-12" />
+        ) : (
+          <div className="text-3xl font-bold tracking-tight text-gray-900 dark:text-white">{value}</div>
+        )}
+      </div>
+    )
+  }
+
   return (
-    <div className="card-hover group p-6">
+    <div className={cn('card-hover group p-6', className)}>
       <div className="flex items-start justify-between">
         <span className="text-xs font-medium uppercase tracking-wide text-gray-400">{label}</span>
         <span className={cn('flex h-8 w-8 items-center justify-center rounded-lg transition-transform duration-200 group-hover:scale-110', ICON_TONES[tone])}>

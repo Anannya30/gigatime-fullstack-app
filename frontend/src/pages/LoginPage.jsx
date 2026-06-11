@@ -1,8 +1,7 @@
 import { useState } from 'react'
-import { Lock, Mail } from 'lucide-react'
-import { Logo } from '../components/Navbar'
+import { Wordmark } from '../components/Navbar'
 import ThemeToggle from '../components/ThemeToggle'
-import { APP_NAME, APP_TAGLINE, APP_USER } from '../utils/constants'
+import { APP_USER } from '../utils/constants'
 
 function GoogleIcon({ className }) {
   return (
@@ -20,52 +19,46 @@ export default function LoginPage({ onLogin, isDark, onToggleTheme }) {
   const [password, setPassword] = useState('••••••••')
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center bg-gray-50 px-4 dark:bg-gray-900">
+    <div className="relative flex min-h-screen items-center justify-center bg-paper px-4 dark:bg-gray-900">
       <div className="absolute right-5 top-5">
         <ThemeToggle isDark={isDark} onToggle={onToggleTheme} />
       </div>
 
-      <div className="w-full max-w-md animate-fade-in">
-        <div className="mb-6 flex flex-col items-center text-center">
-          <Logo className="h-14 w-14" />
-          <h1 className="mt-3 text-2xl font-bold tracking-tight text-gray-900 dark:text-white">{APP_NAME}</h1>
-          <p className="mt-1.5 max-w-xs text-sm text-gray-500 dark:text-gray-400">{APP_TAGLINE}</p>
+      {/* Single card: header · form · RUO strip */}
+      <div className="w-full max-w-md animate-fade-in overflow-hidden rounded-xl border border-paper-line bg-white shadow-lift dark:border-gray-700 dark:bg-gray-800">
+        {/* Header */}
+        <div className="border-b border-paper-line px-8 pb-5 pt-8 text-center dark:border-gray-700">
+          <Wordmark className="text-5xl" accentTime />
+          <p className="mt-2 text-sm tracking-wide text-gray-500 dark:text-gray-400">Virtual mIF · Research Notebook</p>
         </div>
 
-        <div className="card p-7">
+        {/* Form */}
+        <div className="px-8 py-7">
           <form onSubmit={(e) => { e.preventDefault(); onLogin() }} className="space-y-4">
             <div>
               <label className="label" htmlFor="email">Email</label>
-              <div className="relative">
-                <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-                <input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="input pl-9" placeholder="you@institution.org" />
-              </div>
+              <input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="input bg-white dark:bg-gray-900/60" placeholder="you@institution.org" />
             </div>
             <div>
               <label className="label" htmlFor="password">Password</label>
-              <div className="relative">
-                <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-                <input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="input pl-9" placeholder="••••••••" />
-              </div>
+              <input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="input bg-white dark:bg-gray-900/60" placeholder="••••••••" />
             </div>
-            <button type="submit" className="btn-primary w-full">Sign In</button>
+            <button type="submit" className="btn-primary w-full">Sign in</button>
           </form>
 
-          <div className="my-5 flex items-center gap-3">
-            <span className="h-px flex-1 bg-gray-200 dark:bg-gray-700" />
-            <span className="text-xs font-medium text-gray-400">or</span>
-            <span className="h-px flex-1 bg-gray-200 dark:bg-gray-700" />
-          </div>
+          <p className="my-4 text-center text-xs font-semibold uppercase tracking-widest text-gray-400">or</p>
 
-          <button type="button" onClick={onLogin} className="btn-secondary w-full">
+          <button type="button" onClick={onLogin} className="btn w-full border border-paper-line bg-white text-gray-700 hover:border-brand hover:text-brand dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:border-brand dark:hover:text-brand-light">
             <GoogleIcon className="h-4 w-4" />
             Continue with Google
           </button>
         </div>
 
-        <div className="mt-6 text-center">
-          <span className="inline-block rounded-full border border-accent/25 bg-accent/10 px-3 py-1 text-xs font-semibold text-accent-dark dark:text-accent">Research Use Only</span>
-          <p className="mt-2 text-xs text-gray-400">Not intended for clinical diagnosis.</p>
+        {/* Research Use Only strip */}
+        <div className="border-t border-paper-line bg-[#EFE7D6] px-8 py-3 text-center dark:border-gray-700 dark:bg-gray-900/40">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-accent-dark/70 dark:text-gray-400">
+            Research Use Only — Not for Clinical Diagnosis
+          </span>
         </div>
       </div>
     </div>

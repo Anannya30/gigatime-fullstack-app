@@ -5,20 +5,26 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        sans: ['"Amiri"', 'ui-serif', 'Georgia', 'serif'],
+        // Concept 3 notebook style: serif (Amiri) for headings, clean sans (Inter) for body.
+        serif: ['"Amiri"', 'ui-serif', 'Georgia', 'serif'],
+        sans: ['"Inter"', 'ui-sans-serif', 'system-ui', '-apple-system', 'sans-serif'],
       },
-      // Palette is built on Tailwind's emerald / orange / gray scales, which map
-      // 1:1 to the brand spec: emerald-600 #059669, orange-500 #F97316,
-      // gray-900 #111827, gray-800 #1F2937, gray-50 #F9FAFB, gray-200 #E5E7EB.
+      // Concept 3 notebook palette: warm off-white paper + forest-green CTAs.
+      // A muted amber replaces the old orange accent for a warmer, academic tone.
       colors: {
         brand: {
-          DEFAULT: '#059669', // emerald-600
-          dark: '#047857', // emerald-700
-          light: '#10B981', // emerald-500
+          DEFAULT: '#2D6A4F', // forest green
+          dark: '#1B4332', // deep forest (hover / active)
+          light: '#40916C', // light forest
         },
         accent: {
-          DEFAULT: '#F97316', // orange-500
-          dark: '#EA580C', // orange-600
+          DEFAULT: '#B45309', // amber-700
+          dark: '#92400E', // amber-800
+        },
+        paper: {
+          DEFAULT: '#F7F3EA', // warm cream page background
+          card: '#FBFAF6', // slightly lifted card surface
+          line: '#E6DFD1', // hairline borders / dividers
         },
       },
       boxShadow: {
@@ -38,9 +44,9 @@ export default {
         },
         shimmer: { '100%': { transform: 'translateX(100%)' } },
         'pulse-ring': {
-          '0%': { boxShadow: '0 0 0 0 rgba(249, 115, 22, 0.5)' },
-          '70%': { boxShadow: '0 0 0 6px rgba(249, 115, 22, 0)' },
-          '100%': { boxShadow: '0 0 0 0 rgba(249, 115, 22, 0)' },
+          '0%': { boxShadow: '0 0 0 0 rgba(180, 83, 9, 0.5)' },
+          '70%': { boxShadow: '0 0 0 6px rgba(180, 83, 9, 0)' },
+          '100%': { boxShadow: '0 0 0 0 rgba(180, 83, 9, 0)' },
         },
       },
       animation: {
