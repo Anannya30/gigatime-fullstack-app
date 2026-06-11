@@ -1,5 +1,8 @@
+import uuid
+
 from django.contrib.auth.models import AbstractUser, BaseUserManager
 from django.db import models
+from django.utils import timezone
 
 
 class UserManager(BaseUserManager):
@@ -61,3 +64,24 @@ class User(AbstractUser):
 
     def __str__(self):
         return self.email
+
+
+class OTPToken(models.Model):
+    """A one-time 6-digit verification code tied to a short-lived login session."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="otp_tokens")
+    # The 6-digit OTP delivered by email.
+    token = models.CharField(max_length=6)
+    # Random opaque token identifying the OTP session (returned to the client).
+    session_token = models.CharField(max_length=64, unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    is_used = models.BooleanField(default=False)
+
+    def is_valid(self):
+        """True if the code has not been used and has not yet expired."""
+        return not self.is_used and self.expires_at > timezone.now()
+
+    def __str__(self):
+        return f"OTP for {self.user.email} ({'used' if self.is_used else 'active'})"

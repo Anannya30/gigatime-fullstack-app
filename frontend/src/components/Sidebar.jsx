@@ -1,9 +1,6 @@
-import { useMemo } from 'react'
 import { ChevronLeft, Clock } from 'lucide-react'
 import { cn, truncate, statusLabel } from '../utils/helpers'
 import { NAV_ITEMS, SLIDE_STATUS, PAGES } from '../utils/constants'
-import { generateProteinScores } from '../data/mockProteins'
-import { deriveImmunePhenotype, PHENOTYPE_PILL } from '../utils/clinical'
 
 const SLIDE_GRADIENT = {
   [SLIDE_STATUS.SUCCEEDED]: 'bg-gradient-to-b from-green-50 to-green-200 dark:from-green-500/10 dark:to-green-500/25',
@@ -19,12 +16,6 @@ const SLIDE_BORDER = {
 function RecentSlide({ slide, onSelect }) {
   const gradient = SLIDE_GRADIENT[slide.status] || 'bg-gradient-to-b from-gray-50 to-gray-200 dark:from-gray-700 dark:to-gray-600'
   const border = SLIDE_BORDER[slide.status] || 'border-gray-400'
-  // TME immune phenotype (replaces the biologically meaningless mean marker %).
-  const phenotype = useMemo(() => {
-    if (slide.status !== SLIDE_STATUS.SUCCEEDED) return null
-    const cd8 = generateProteinScores(slide.id).find((p) => p.name === 'CD8')?.score ?? null
-    return deriveImmunePhenotype(null, null, cd8)
-  }, [slide.id, slide.status])
 
   return (
     <button
@@ -35,11 +26,7 @@ function RecentSlide({ slide, onSelect }) {
       <span className={cn('h-10 w-8 shrink-0 rounded', gradient)} />
       <span className="min-w-0 flex-1">
         <span className="block truncate text-xs font-semibold text-gray-800 dark:text-gray-100">{truncate(slide.filename, 18)}</span>
-        {phenotype ? (
-          <span className={cn('mt-0.5 inline-block rounded-full px-1.5 py-0.5 text-[10px] font-semibold', PHENOTYPE_PILL[phenotype.tone])}>{phenotype.short}</span>
-        ) : (
-          <span className="block text-[11px] font-medium text-gray-400">{statusLabel(slide.status)}</span>
-        )}
+        <span className="block text-[11px] font-medium text-gray-400">{statusLabel(slide.status)}</span>
       </span>
     </button>
   )

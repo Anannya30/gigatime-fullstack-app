@@ -1,40 +1,64 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { ChevronDown, Download, FileText } from 'lucide-react'
 import ProgressCard from '../components/ProgressCard'
 import StatusBadge from '../components/StatusBadge'
-import { generateProteinScores } from '../data/mockProteins'
+import { getSlideResults, downloadTiff } from '../api/slidesApi'
 import { SLIDE_STATUS, PAGES } from '../utils/constants'
-import { cn, statusLabel, markerConfidence } from '../utils/helpers'
+import { cn, statusLabel } from '../utils/helpers'
 
 const EYEBROW = 'text-[11px] font-semibold uppercase tracking-[0.12em] text-[#5A7B72] dark:text-brand-light'
+
+// Static reference metadata per analysis channel: cell-type label + report group.
+const MARKER_META = {
+  DAPI: { label: 'Nuclear marker', category: 'Structural' },
+  CD11c: { label: 'Dendritic cells', category: 'Immune Cells' },
+  'PD-L1': { label: 'Checkpoint ligand', category: 'Cancer Markers' },
+  CK: { label: 'Epithelial lineage', category: 'Cancer Markers' },
+  CD16: { label: 'NK / neutrophils', category: 'Immune Cells' },
+  CD68: { label: 'Macrophages', category: 'Immune Cells' },
+  CD138: { label: 'Plasma cells', category: 'Immune Cells' },
+  CD4: { label: 'Helper T cells', category: 'Immune Cells' },
+  'PHH3-B': { label: 'Mitotic spindle', category: 'Cell Death' },
+  CD3: { label: 'All T cells', category: 'Immune Cells' },
+  Ki67: { label: 'Proliferation index', category: 'Cancer Markers' },
+  CD34: { label: 'Vascular / endothelium', category: 'Cancer Markers' },
+  'T-bet': { label: 'NK / T-cell lineage', category: 'Other' },
+  'Actin-D': { label: 'Myofibroblast', category: 'Structural' },
+  CD14: { label: 'Monocytes', category: 'Immune Cells' },
+  CD8: { label: 'Cytotoxic T cells', category: 'Immune Cells' },
+  'Caspase3-D': { label: 'Apoptosis', category: 'Cell Death' },
+  'PD-1': { label: 'Checkpoint receptor', category: 'Other' },
+  Transgelin: { label: 'Fibroblast / smooth muscle', category: 'Structural' },
+  Tryptase: { label: 'Mast cells', category: 'Other' },
+  CD20: { label: 'B cells', category: 'Immune Cells' },
+}
 
 // Marker-channel ordering within each subsection (matches the report layout).
 const GROUP_ORDER = ['Immune Cells', 'Cancer Markers', 'Cell Death', 'Structural', 'Other']
 const MARKER_ORDER = ['CD3', 'CD4', 'CD8', 'CD11c', 'CD14', 'CD16', 'CD20', 'CD68', 'CD138', 'CK', 'PD-L1', 'CD34', 'Ki67', 'Caspase3-D', 'PHH3-B', 'DAPI', 'Actin-D', 'Transgelin', 'PD-1', 'T-bet', 'Tryptase']
 
 // Bar fill + confidence-tag color by tier (green = high, gold-brown = moderate, muted = low).
-const TIER_BAR = { HIGH: '#406E5E', MODERATE: '#987B37', LOW: '#C9BFA6', 'VERY LOW': '#C9BFA6' }
-const TIER_TAG = { HIGH: 'text-[#406E5E]', MODERATE: 'text-[#987B37]', LOW: 'text-[#9C854F]', 'VERY LOW': 'text-[#A89F8D]' }
-const BADGE = {
-  evaluate: 'bg-[#B0C7BF] text-[#2D4A40]',
-  suggestive: 'bg-[#E3D8C0] text-[#8A7B5C]',
-  hypothesis: 'bg-[#E2DED2] text-[#928E82] dark:bg-gray-700 dark:text-gray-300',
+const TIER_BAR = { HIGH: '#406E5E', MODERATE: '#987B37', LOW: '#C9BFA6' }
+const TIER_TAG = { HIGH: 'text-[#406E5E]', MODERATE: 'text-[#B5860D]', LOW: 'text-[#C0522A]' }
+
+/** Confidence tier from the raw sigmoid confidence score (0.0–1.0). */
+function confidenceTier(score) {
+  if (score == null) return 'LOW'
+  if (score > 0.7) return 'HIGH'
+  if (score >= 0.4) return 'MODERATE'
+  return 'LOW'
 }
 
-const pct1 = (v) => (v == null ? '—' : `${v.toFixed(1)}%`)
-const fmtSpatial = (v) => (v == null ? '—' : v < 0.1 ? `${v.toFixed(2)}%` : `${v.toFixed(1)}%`)
-
 /** One predicted protein channel — the hero row. Percentage value is dominant. */
-function MarkerRow({ p }) {
-  const tier = markerConfidence(p.r)
-  const faded = tier === 'VERY LOW' || p.insufficient
-  const value = p.insufficient ? null : p.score
+function MarkerRow({ marker }) {
+  const tier = confidenceTier(marker.confidence_score)
+  const value = marker.positive_pixel_pct
   const barW = value == null ? 0 : Math.min(100, value)
   return (
-    <div className={cn('grid grid-cols-[130px_minmax(60px,1fr)_92px_104px] items-center gap-x-5 border-b border-[#DDD6C6] py-3.5 dark:border-gray-800', faded && 'opacity-45')}>
+    <div className="grid grid-cols-[130px_minmax(60px,1fr)_92px_104px] items-center gap-x-5 border-b border-[#DDD6C6] py-3.5 dark:border-gray-800">
       <div className="min-w-0">
-        <div className="font-serif text-base font-bold leading-tight text-[#42433E] dark:text-gray-100">{p.name}</div>
-        <div className="mt-0.5 text-xs text-[#928E82]">{p.description}</div>
+        <div className="font-serif text-base font-bold leading-tight text-[#42433E] dark:text-gray-100">{marker.marker}</div>
+        <div className="mt-0.5 text-xs text-[#928E82]">{marker.label}</div>
       </div>
       <div className="h-1.5 w-full overflow-hidden rounded-full bg-[#F0EBDB] dark:bg-gray-700">
         <div className="h-full rounded-full" style={{ width: `max(${barW}%, 6px)`, backgroundColor: TIER_BAR[tier] }} />
@@ -43,7 +67,7 @@ function MarkerRow({ p }) {
         {value == null ? 'N/A' : `${value.toFixed(2)}%`}
       </div>
       <div className={cn('text-right text-[11px] font-semibold uppercase tracking-wide', TIER_TAG[tier])}>
-        {tier} · R{p.r != null ? p.r.toFixed(2) : '—'}
+        {tier} · R{marker.confidence_score != null ? marker.confidence_score.toFixed(2) : '—'}
       </div>
     </div>
   )
@@ -51,57 +75,38 @@ function MarkerRow({ p }) {
 
 export default function ResultsPage({ slide, onNavigate, onToast }) {
   const [procOpen, setProcOpen] = useState(false)
-  const proteins = useMemo(() => (slide ? generateProteinScores(slide.id) : []), [slide])
+  const [markerTable, setMarkerTable] = useState(null)
+  const [resultsError, setResultsError] = useState(null)
 
-  // --- Confidence-aware clinical interpretation ----------------------------
-  const interp = useMemo(() => {
-    const pv = (n) => {
-      const p = proteins.find((x) => x.name === n)
-      return p && !p.insufficient ? (p.score ?? null) : null
+  // Load the real marker table once the slide has finished inference.
+  useEffect(() => {
+    setMarkerTable(null)
+    setResultsError(null)
+    if (!slide || slide.status !== SLIDE_STATUS.SUCCEEDED) return
+    let active = true
+    ;(async () => {
+      try {
+        const data = await getSlideResults(slide.id)
+        if (active) setMarkerTable(data?.marker_table || [])
+      } catch (e) {
+        if (active) setResultsError(e.message || 'Results unavailable')
+      }
+    })()
+    return () => {
+      active = false
     }
-    const rv = (n) => proteins.find((x) => x.name === n)?.r ?? null
+  }, [slide])
 
-    const cd3 = pv('CD3'), cd4 = pv('CD4'), cd8 = pv('CD8'), pdl1 = pv('PD-L1')
-    const cd68 = pv('CD68'), casp = pv('Caspase3-D')
-    const cd8Conf = markerConfidence(rv('CD8'))
-    const pdl1Conf = markerConfidence(rv('PD-L1'))
-
-    const pdl1High = pdl1 != null && pdl1 >= 20
-    const pdl1Detected = pdl1 != null && pdl1 >= 5
-    const tcellPresent = (cd3 != null && cd3 >= 5) || (cd4 != null && cd4 >= 5)
-    const cytotoxicReliable = cd8 != null && cd8 >= 1 && (cd8Conf === 'HIGH' || cd8Conf === 'MODERATE')
-    const proliferationAssessable = markerConfidence(rv('Ki67')) !== 'VERY LOW' || markerConfidence(rv('PHH3-B')) !== 'VERY LOW'
-    const apoptosisElevated = casp != null && casp >= 10
-
-    const heading = `${cytotoxicReliable ? 'Active immune infiltration' : 'Low immune infiltration'}, ${pdl1High ? 'PD-L1 high' : pdl1Detected ? 'PD-L1 detected' : 'PD-L1 low'}`
-    const body = `Whole-slide PD-L1 activation is ${pdl1High ? 'high' : pdl1Detected ? 'present' : 'low'} while cytotoxic T-cell signal is ${cytotoxicReliable ? 'detected' : 'not reliably detected'}. ${apoptosisElevated ? 'Apoptosis elevated' : 'Apoptosis within baseline'}; proliferation ${proliferationAssessable ? 'detectable' : 'not assessable'}.`
-    const caveat = 'Whole-slide densities only. Immune-excluded vs immune-desert is not separable without tumour-core vs stromal data, which this model does not produce.'
-
-    const findings = []
-    if (pdl1 != null && pdl1High) findings.push(`PD-L1 activation high (${pct1(pdl1)}) on a ${pdl1Conf.toLowerCase()}-confidence channel — relevant to checkpoint pathway, confirm by IHC.`)
-    else if (pdl1 != null) findings.push(`PD-L1 ${pdl1Detected ? 'detected' : 'low'} (${pct1(pdl1)}) on a ${pdl1Conf.toLowerCase()}-confidence channel.`)
-    if (tcellPresent) findings.push(`T-cell infiltrate present (CD3 ${pct1(cd3)}, CD4 ${pct1(cd4)}) on high-confidence channels.`)
-    if (cd8 != null && cd8 < 1) findings.push(`Cytotoxic CD8 reads near-zero but on the model's weakest channel (r=${(rv('CD8') ?? 0).toFixed(2)}) — absence of usable signal, not confirmed absence.`)
-    if (!proliferationAssessable) findings.push('Proliferation (Ki67, PHH3) not assessable — lowest-confidence channels in the model.')
-    if (apoptosisElevated) findings.push(`Apoptotic activity elevated (Caspase3 ${pct1(casp)}).`)
-
-    const spatial = [
-      { label: 'T-cell (CD3)', value: cd3 },
-      { label: 'Helper T (CD4)', value: cd4 },
-      { label: 'Cytotoxic (CD8)', value: cd8, low: cd8 == null || cd8 < 1 || cd8Conf === 'LOW' || cd8Conf === 'VERY LOW' },
-      { label: 'Checkpoint (PD-L1)', value: pdl1 },
-      { label: 'Macrophage (CD68)', value: cd68 },
-    ]
-
-    const signals = [
-      { title: 'Checkpoint Inhibitor candidacy', badge: pdl1High ? 'EVALUATE' : 'HYPOTHESIS', tone: pdl1High ? 'evaluate' : 'hypothesis', note: `PD-L1 activation ${pdl1High ? 'high' : 'low'} (${pct1(pdl1)}); confirm by clinical PD-L1 IHC before acting.` },
-      { title: 'Immune Excluded Pattern', badge: 'SUGGESTIVE', tone: 'suggestive', note: `T-cells present (CD3 ${pct1(cd3)}) but cytotoxic CD8 not reliably detected — pattern only, not localisable.` },
-      { title: 'Chemo Sensitivity', badge: 'HYPOTHESIS', tone: 'hypothesis', note: 'Proliferation markers (Ki67, PHH3) below reliability floor — cannot be assessed from this slide.' },
-      { title: 'Anti-angiogenic Signal', badge: 'HYPOTHESIS', tone: 'hypothesis', note: 'Vascular CD34 low and low-confidence; insufficient basis for an angiogenic read.' },
-    ]
-
-    return { heading, body, caveat, findings, spatial, signals }
-  }, [proteins])
+  // Join the marker table with static cell-type/group metadata for rendering.
+  const markers = useMemo(
+    () =>
+      (markerTable || []).map((m) => ({
+        ...m,
+        label: MARKER_META[m.marker]?.label || '',
+        category: MARKER_META[m.marker]?.category || 'Other',
+      })),
+    [markerTable]
+  )
 
   if (!slide) {
     return (
@@ -114,7 +119,16 @@ export default function ResultsPage({ slide, onNavigate, onToast }) {
   }
 
   const isRunning = slide.status === SLIDE_STATUS.RUNNING
+  const isDone = slide.status === SLIDE_STATUS.SUCCEEDED
   const mockDownload = (what) => onToast?.(`${what} — download started (mock)`)
+  const handleDownloadTiff = async () => {
+    try {
+      await downloadTiff(slide.id)
+      onToast?.('OME-TIFF — download started')
+    } catch (e) {
+      onToast?.(e.message || 'OME-TIFF not ready yet')
+    }
+  }
   const statusLine = slide.errorMessage || slide.progress?.stage || statusLabel(slide.status)
 
   const histology = slide.histology || slide.notes || ''
@@ -133,79 +147,38 @@ export default function ResultsPage({ slide, onNavigate, onToast }) {
         </div>
       </div>
 
-      {/* 2 — Two-column interpretation */}
-      <div className="grid grid-cols-1 gap-12 lg:grid-cols-[1.55fr_1fr]">
-        {/* Left — phenotype + key findings */}
-        <div>
-          <p className={EYEBROW}>Tumour Immune Phenotype</p>
-          <h2 className="mt-2 font-serif text-[24px] font-bold leading-snug text-[#42433E] dark:text-white">{interp.heading}</h2>
-          <p className="mt-3 text-[15px] leading-relaxed text-[#42433E] dark:text-gray-300">{interp.body}</p>
-          <p className="mt-3 text-sm italic leading-relaxed text-[#928E82]">{interp.caveat}</p>
-
-          <p className={cn(EYEBROW, 'mt-8')}>Key Findings</p>
-          <div className="mt-2">
-            {interp.findings.map((f, i) => (
-              <div key={i} className="flex gap-2.5 border-b border-[#DDD6C6] py-3.5 text-[15px] leading-relaxed text-[#42433E] dark:border-gray-800 dark:text-gray-300">
-                <span className="text-[#928E82]">—</span>
-                <span>{f}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Right — spatial readout + treatment signals */}
-        <div>
-          <h3 className="font-serif text-lg font-bold text-[#42433E] dark:text-white">Spatial immune readout</h3>
-          <div className="mt-2">
-            {interp.spatial.map((row) => (
-              <div key={row.label} className="flex items-center justify-between border-b border-[#DDD6C6] py-3 dark:border-gray-800">
-                <span className="text-sm text-[#42433E] dark:text-gray-300">
-                  {row.label}{row.low && <span className="text-[#928E82]"> · low</span>}
-                </span>
-                <span className="text-base font-bold tabular-nums text-[#406E5E] dark:text-brand-light">{fmtSpatial(row.value)}</span>
-              </div>
-            ))}
-          </div>
-
-          <h3 className="mt-8 font-serif text-lg font-bold text-[#42433E] dark:text-white">Treatment pathway signals</h3>
-          <div className="mt-1 divide-y divide-[#DDD6C6] dark:divide-gray-800">
-            {interp.signals.map((s) => (
-              <div key={s.title} className="py-4">
-                <div className="flex items-start justify-between gap-3">
-                  <h4 className="font-serif text-base font-bold leading-snug text-[#42433E] dark:text-white">{s.title}</h4>
-                  <span className={cn('mt-0.5 shrink-0 rounded-[4px] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide', BADGE[s.tone])}>{s.badge}</span>
-                </div>
-                <p className="mt-1.5 text-sm italic leading-relaxed text-[#928E82]">{s.note}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* 3 — Predicted marker channels (the hero) */}
+      {/* 2 — Predicted marker channels (the hero) */}
       <div>
         <p className={EYEBROW}>Predicted Marker Channels · 21</p>
-        <div className="mt-4">
-          {GROUP_ORDER.map((group) => {
-            const rows = proteins
-              .filter((p) => p.category === group)
-              .sort((a, b) => MARKER_ORDER.indexOf(a.name) - MARKER_ORDER.indexOf(b.name))
-            if (!rows.length) return null
-            return (
-              <div key={group} className="mt-7 first:mt-0">
-                <h3 className="border-t border-[#DDD6C6] pt-4 font-serif text-lg font-bold text-[#42433E] dark:border-gray-800 dark:text-gray-100">{group}</h3>
-                <div className="mt-1">
-                  {rows.map((p) => <MarkerRow key={p.name} p={p} />)}
+        {!isDone ? (
+          <p className="mt-4 text-sm italic text-[#928E82]">Marker channels are available once analysis completes.</p>
+        ) : resultsError ? (
+          <p className="mt-4 text-sm italic text-red-600 dark:text-red-400">{resultsError}</p>
+        ) : markerTable == null ? (
+          <p className="mt-4 text-sm italic text-[#928E82]">Loading marker channels…</p>
+        ) : (
+          <div className="mt-4">
+            {GROUP_ORDER.map((group) => {
+              const rows = markers
+                .filter((m) => m.category === group)
+                .sort((a, b) => MARKER_ORDER.indexOf(a.marker) - MARKER_ORDER.indexOf(b.marker))
+              if (!rows.length) return null
+              return (
+                <div key={group} className="mt-7 first:mt-0">
+                  <h3 className="border-t border-[#DDD6C6] pt-4 font-serif text-lg font-bold text-[#42433E] dark:border-gray-800 dark:text-gray-100">{group}</h3>
+                  <div className="mt-1">
+                    {rows.map((m) => <MarkerRow key={m.marker} marker={m} />)}
+                  </div>
                 </div>
-              </div>
-            )
-          })}
-        </div>
+              )
+            })}
+          </div>
+        )}
       </div>
 
-      {/* 4 — Actions */}
+      {/* 3 — Actions */}
       <div className="flex flex-wrap items-center gap-3">
-        <button type="button" onClick={() => mockDownload('OME-TIFF')} className="inline-flex items-center gap-2 rounded-[5px] bg-[#3E6B5C] px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#33594d]">
+        <button type="button" onClick={handleDownloadTiff} className="inline-flex items-center gap-2 rounded-[5px] bg-[#3E6B5C] px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#33594d]">
           <Download className="h-4 w-4" />
           Download OME-TIFF
         </button>
@@ -215,29 +188,10 @@ export default function ResultsPage({ slide, onNavigate, onToast }) {
         </button>
       </div>
 
-      {/* 5 — Footer disclaimer */}
+      {/* 4 — Footer disclaimer */}
       <p className="border-t border-[#DDD6C6] pt-5 text-sm italic leading-relaxed text-[#928E82] dark:border-gray-800">
-        Virtual mIF predicted from H&amp;E (NestedUNet, 21 channels). Confidence r is the held-out validation correlation per channel, identical across patients. Research Use Only &mdash; not for clinical diagnosis. Confirm decision-relevant markers with an orthogonal clinical assay on this patient.
+        Virtual mIF predicted from H&amp;E (NestedUNet, 21 channels). Confidence R is the mean sigmoid probability over positive pixels per channel. Research Use Only &mdash; not for clinical diagnosis. Confirm decision-relevant markers with an orthogonal clinical assay on this patient.
       </p>
-
-      {/* 6 — Processing details */}
-      <div className="card overflow-hidden">
-        <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-3.5">
-          <div className="flex min-w-0 items-center gap-2.5">
-            <StatusBadge status={slide.status} variant="dot" />
-            <span className={cn('truncate text-sm', slide.errorMessage ? 'text-red-600 dark:text-red-400' : 'text-[#928E82]')}>{statusLine}</span>
-          </div>
-          <button type="button" onClick={() => setProcOpen((o) => !o)} aria-expanded={procOpen} className="flex shrink-0 items-center gap-1 text-xs font-semibold text-brand hover:text-brand-dark">
-            Processing details
-            <ChevronDown className={cn('h-4 w-4 transition-transform', procOpen && 'rotate-180')} />
-          </button>
-        </div>
-        {procOpen && (
-          <div className="border-t border-paper-line p-5 dark:border-gray-800">
-            <ProgressCard progress={slide.progress} live={isRunning} />
-          </div>
-        )}
-      </div>
     </div>
   )
 }

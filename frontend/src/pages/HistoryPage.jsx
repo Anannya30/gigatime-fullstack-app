@@ -1,7 +1,7 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { ChevronDown, ChevronLeft, ChevronRight, ChevronsUpDown, GitCompareArrows, Search } from 'lucide-react'
 import StatusBadge from '../components/StatusBadge'
-import { generateProteinScores } from '../data/mockProteins'
+import { getSlideResults } from '../api/slidesApi'
 import { CANCER_TYPES, SLIDE_STATUS } from '../utils/constants'
 import { cn, formatDateTime, formatDuration, paginate, pageCount, scoreColor } from '../utils/helpers'
 
@@ -131,6 +131,8 @@ export default function HistoryPage({ slides, loading, onView, onCompareSelected
                     {Array.from({ length: 7 }).map((__, j) => <td key={j} className="px-4 py-3.5"><div className="skeleton h-4 w-16" /></td>)}
                   </tr>
                 ))
+              ) : slides.length === 0 ? (
+                <tr><td colSpan={7} className="px-4 py-12 text-center text-gray-400">No slides yet — upload your first slide</td></tr>
               ) : rows.length === 0 ? (
                 <tr><td colSpan={7} className="px-4 py-12 text-center text-gray-400">No slides match these filters.</td></tr>
               ) : (
@@ -158,7 +160,29 @@ export default function HistoryPage({ slides, loading, onView, onCompareSelected
 
 function Row({ slide, selected, expanded, onToggleSelect, onToggleExpand, onView }) {
   const selectable = slide.status === SLIDE_STATUS.SUCCEEDED
-  const top3 = useMemo(() => generateProteinScores(slide.id).filter((p) => !p.insufficient).sort((a, b) => b.score - a.score).slice(0, 3), [slide.id])
+  const [top3, setTop3] = useState([])
+
+  // Lazily fetch the real marker table the first time a completed row expands.
+  useEffect(() => {
+    if (!expanded || !selectable) return
+    let active = true
+    ;(async () => {
+      try {
+        const data = await getSlideResults(slide.id)
+        const rows = (data?.marker_table || [])
+          .map((m) => ({ name: m.marker, score: m.positive_pixel_pct }))
+          .sort((a, b) => b.score - a.score)
+          .slice(0, 3)
+        if (active) setTop3(rows)
+      } catch {
+        if (active) setTop3([])
+      }
+    })()
+    return () => {
+      active = false
+    }
+  }, [expanded, selectable, slide.id])
+
   return (
     <>
       <tr className={cn('border-t border-gray-100 transition-colors dark:border-gray-800', selected ? 'bg-brand/5' : 'hover:bg-brand/5')}>

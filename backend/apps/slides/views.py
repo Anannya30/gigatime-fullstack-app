@@ -2,6 +2,7 @@ import os
 import uuid
 
 from django.conf import settings
+from django.http import FileResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import status
@@ -198,6 +199,27 @@ class SlideResultView(OwnerSlideMixin, APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
         return Response(SlideResultSerializer(result).data, status=status.HTTP_200_OK)
+
+
+class SlideTiffDownloadView(OwnerSlideMixin, APIView):
+    """GET /api/slides/<pk>/download-tiff/ — stream the OME-TIFF output."""
+
+    def get(self, request, pk):
+        slide = self.get_slide(request, pk)
+        # The OME-TIFF sits next to the source PNG: <original_stem>_pred.ome.tiff.
+        base, _ext = os.path.splitext(slide.file_path)
+        tiff_path = f"{base}_pred.ome.tiff"
+        if not os.path.exists(tiff_path):
+            return Response(
+                {"detail": "OME-TIFF not ready yet"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        return FileResponse(
+            open(tiff_path, "rb"),
+            content_type="image/tiff",
+            as_attachment=True,
+            filename=os.path.basename(tiff_path),
+        )
 
 
 class SlideItemView(SlideDetailView, SlidePatchView, SlideDeleteView):

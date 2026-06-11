@@ -26,6 +26,7 @@ from run_png_inference import (  # noqa: E402
     CHANNEL_NAMES,
     load_model,
     predict_slide,
+    write_ome_tiff,
 )
 
 
@@ -101,6 +102,12 @@ def run_batch_inference(batch_job_id):
             binary_stack, prob_stack = predict_slide(
                 model, Path(slide.file_path), device)
             marker_table = _build_marker_table(binary_stack, prob_stack)
+
+            # Write the OME-TIFF next to the source image: <stem>_pred.ome.tiff.
+            tiff_path = Path(slide.file_path).with_suffix("").parent / (
+                Path(slide.file_path).stem + "_pred.ome.tiff"
+            )
+            write_ome_tiff(tiff_path, binary_stack)
 
             SlideResult.objects.create(slide=slide, marker_table=marker_table)
 

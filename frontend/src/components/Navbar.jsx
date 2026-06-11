@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Bell, ChevronDown, LogOut, Menu, Search, Settings, User } from 'lucide-react'
 import ThemeToggle from './ThemeToggle'
 import ResearchBadge from './ResearchBadge'
-import { cn } from '../utils/helpers'
+import { cn, timeAgo } from '../utils/helpers'
 import { APP_NAME, PAGES } from '../utils/constants'
 import biostackLogo from '../data/biostack-logo.jpeg'
 
@@ -20,13 +20,13 @@ export function Wordmark({ className, accentTime = false }) {
   )
 }
 
-const MOCK_NOTIFICATIONS = [
-  { id: 1, title: 'LUAD-cohortA-0781 is running', detail: 'Inference batch 15 · ETA ~4 min', tone: 'orange' },
-  { id: 2, title: 'TCGA-44-2665-01A completed', detail: 'Immune phenotype resolved · 21 channels', tone: 'green' },
-  { id: 3, title: 'BRCA-Slide-0192 failed', detail: 'Worker preempted — requeuing', tone: 'red' },
-]
+// Map a backend slide status (COMPLETED/FAILED) to a label + dot tone.
+function notifMeta(status) {
+  const failed = String(status).toUpperCase() === 'FAILED'
+  return { label: failed ? 'Failed' : 'Completed', tone: failed ? 'red' : 'green' }
+}
 
-export default function Navbar({ user, isDark, onToggleTheme, onToggleSidebar, onNavigate, onLogout, scrolled }) {
+export default function Navbar({ user, isDark, onToggleTheme, onToggleSidebar, onNavigate, onLogout, scrolled, notifications = [], unreadCount = 0, onClearNotification }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const [bellOpen, setBellOpen] = useState(false)
   const menuRef = useRef(null)
@@ -78,20 +78,36 @@ export default function Navbar({ user, isDark, onToggleTheme, onToggleSidebar, o
               aria-label="Notifications"
             >
               <Bell className="h-[18px] w-[18px]" />
-              <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-accent ring-2 ring-white dark:ring-gray-900" />
+              {unreadCount > 0 && (
+                <span className="absolute -right-1 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-accent px-1 text-[10px] font-bold text-white ring-2 ring-paper dark:ring-gray-900">
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </span>
+              )}
             </button>
             {bellOpen && (
               <div className="absolute right-0 mt-2 w-80 origin-top-right animate-fade-in-fast rounded-xl border border-gray-200 bg-white p-2 shadow-lift dark:border-gray-700 dark:bg-gray-800">
                 <p className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-gray-400">Notifications</p>
-                {MOCK_NOTIFICATIONS.map((n) => (
-                  <div key={n.id} className="flex gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                    <span className={cn('mt-1.5 h-2 w-2 shrink-0 rounded-full', n.tone === 'green' && 'bg-brand', n.tone === 'orange' && 'bg-accent', n.tone === 'red' && 'bg-red-500')} />
-                    <div>
-                      <p className="text-sm font-medium text-gray-900 dark:text-white">{n.title}</p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">{n.detail}</p>
-                    </div>
-                  </div>
-                ))}
+                {notifications.length === 0 ? (
+                  <p className="px-3 py-6 text-center text-sm text-gray-400">No new notifications</p>
+                ) : (
+                  notifications.map((n) => {
+                    const { label, tone } = notifMeta(n.status)
+                    return (
+                      <button
+                        type="button"
+                        key={n.id}
+                        onClick={() => onClearNotification?.(n.id)}
+                        className="flex w-full gap-3 rounded-lg px-3 py-2.5 text-left transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/50"
+                      >
+                        <span className={cn('mt-1.5 h-2 w-2 shrink-0 rounded-full', tone === 'green' ? 'bg-brand' : 'bg-red-500')} />
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium text-gray-900 dark:text-white">{n.filename}</p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400">{label} · {timeAgo(n.timestamp)}</p>
+                        </div>
+                      </button>
+                    )
+                  })
+                )}
               </div>
             )}
           </div>

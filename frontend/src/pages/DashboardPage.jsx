@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Cell, Pie, PieChart, ResponsiveContainer } from 'recharts'
 import SlideTable from '../components/SlideTable'
-import { APP_USER, PAGES } from '../utils/constants'
+import { APP_USER, PAGES, SLIDE_STATUS } from '../utils/constants'
 import { cn, statusLabel } from '../utils/helpers'
 
 // Cohort-level treatment signal flags (mock — across completed slides).
@@ -21,14 +21,15 @@ const TREATMENT_SIGNALS = [
   { name: 'Anti-angiogenic Low Signal', count: 8, total: 11, tone: 'grey' },
 ]
 
-// Completed slides by cancer type (mock) — muted green / sage / amber palette.
-const COHORT = [
-  { name: 'Lung', value: 4, color: '#2D6A4F' },
-  { name: 'Breast', value: 3, color: '#74A892' },
-  { name: 'Pancreas', value: 2, color: '#B45309' },
-  { name: 'Brain', value: 1, color: '#B7C9B5' },
-  { name: 'Other', value: 1, color: '#B0A99A' },
-]
+// Muted green / sage / amber palette for the cohort-breakdown pie (by cancer type).
+const COHORT_COLORS = {
+  Lung: '#2D6A4F',
+  Breast: '#74A892',
+  Pancreas: '#B45309',
+  Brain: '#B7C9B5',
+  Colon: '#7C9885',
+  Other: '#B0A99A',
+}
 
 function SignalRow({ name, count, total, tone }) {
   const pct = Math.round((count / total) * 100)
@@ -61,6 +62,23 @@ export default function DashboardPage({ slides, loading, stats, onNavigate, onVi
       && (!query || s.filename.toLowerCase().includes(query.toLowerCase())))
   // Show only the 10 most recent; the rest live on "My Slides".
   const recent = filtered.slice(0, 10)
+  const isEmpty = !loading && slides.length === 0
+
+  // Cohort breakdown derived from real completed slides, grouped by cancer type.
+  const cohort = useMemo(() => {
+    const counts = {}
+    slides
+      .filter((s) => s.status === SLIDE_STATUS.SUCCEEDED)
+      .forEach((s) => {
+        const type = s.cancerType || 'Other'
+        counts[type] = (counts[type] || 0) + 1
+      })
+    return Object.entries(counts).map(([name, value]) => ({
+      name,
+      value,
+      color: COHORT_COLORS[name] || COHORT_COLORS.Other,
+    }))
+  }, [slides])
 
   return (
     <div className="animate-fade-in space-y-8">
@@ -103,7 +121,14 @@ export default function DashboardPage({ slides, loading, stats, onNavigate, onVi
           <h2 className="font-semibold text-gray-900 dark:text-white">Recent Slides</h2>
           <button type="button" onClick={() => onNavigate(PAGES.HISTORY)} className="text-xs font-semibold text-brand hover:text-brand-dark">View all →</button>
         </div>
-        <SlideTable slides={recent} loading={loading} pageSize={10} onView={onViewSlide} />
+        {isEmpty ? (
+          <div className="card flex flex-col items-center justify-center px-6 py-16 text-center">
+            <p className="text-sm text-gray-500 dark:text-gray-400">No slides yet — upload your first slide</p>
+            <button type="button" onClick={() => onNavigate(PAGES.UPLOAD)} className="btn-primary mt-4 px-5 py-2.5">+ Submit new slide</button>
+          </div>
+        ) : (
+          <SlideTable slides={recent} loading={loading} pageSize={10} onView={onViewSlide} />
+        )}
       </div>
 
       {/* Bottom row — Treatment Signals + Cohort Breakdown (50/50, equal height) */}
@@ -126,14 +151,14 @@ export default function DashboardPage({ slides, loading, stats, onNavigate, onVi
             <div className="h-44 w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
-                  <Pie data={COHORT} dataKey="value" nameKey="name" innerRadius={48} outerRadius={72} paddingAngle={2} stroke="none">
-                    {COHORT.map((c) => <Cell key={c.name} fill={c.color} />)}
+                  <Pie data={cohort} dataKey="value" nameKey="name" innerRadius={48} outerRadius={72} paddingAngle={2} stroke="none">
+                    {cohort.map((c) => <Cell key={c.name} fill={c.color} />)}
                   </Pie>
                 </PieChart>
               </ResponsiveContainer>
             </div>
             <div className="mt-4 grid w-full grid-cols-2 gap-x-6 gap-y-2">
-              {COHORT.map((c) => (
+              {cohort.map((c) => (
                 <div key={c.name} className="flex items-center justify-between gap-2 text-sm">
                   <span className="flex items-center gap-2">
                     <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: c.color }} />

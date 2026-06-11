@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { Wordmark } from '../components/Navbar'
 import ThemeToggle from '../components/ThemeToggle'
-import { APP_USER } from '../utils/constants'
 
 function GoogleIcon({ className }) {
   return (
@@ -14,9 +13,83 @@ function GoogleIcon({ className }) {
   )
 }
 
-export default function LoginPage({ onLogin, isDark, onToggleTheme }) {
-  const [email, setEmail] = useState(APP_USER.email)
-  const [password, setPassword] = useState('••••••••')
+export default function LoginPage({ isDark, onToggleTheme, otpRequired, loginWithEmail, submitOtp, register }) {
+  const [mode, setMode] = useState('signin') // 'signin' | 'signup'
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [firstName, setFirstName] = useState('')
+  const [lastName, setLastName] = useState('')
+  const [labName, setLabName] = useState('')
+  const [otp, setOtp] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState(null)
+  const [success, setSuccess] = useState(null)
+
+  function showSignin() {
+    setMode('signin')
+    setError(null)
+    setSuccess(null)
+  }
+  function showSignup() {
+    setMode('signup')
+    setError(null)
+    setSuccess(null)
+  }
+
+  async function handleRegister(e) {
+    e.preventDefault()
+    setError(null)
+    setSuccess(null)
+    setLoading(true)
+    try {
+      await register(email, password, firstName, lastName, labName)
+      setSuccess('Account created! Please sign in.')
+      setMode('signin')
+      setPassword('')
+    } catch (err) {
+      setError(err.message || 'Registration failed')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleSignIn(e) {
+    e.preventDefault()
+    setError(null)
+    setLoading(true)
+    try {
+      await loginWithEmail(email, password)
+    } catch (err) {
+      setError(err.message || 'Sign in failed')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleVerify(e) {
+    e.preventDefault()
+    setError(null)
+    setLoading(true)
+    try {
+      await submitOtp(otp)
+    } catch (err) {
+      setError(err.message || 'Verification failed')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleResend() {
+    setError(null)
+    setLoading(true)
+    try {
+      await loginWithEmail(email, password)
+    } catch (err) {
+      setError(err.message || 'Could not resend code')
+    } finally {
+      setLoading(false)
+    }
+  }
 
   return (
     <div className="relative flex min-h-screen items-center justify-center bg-paper px-4 dark:bg-gray-900">
@@ -32,26 +105,109 @@ export default function LoginPage({ onLogin, isDark, onToggleTheme }) {
           <p className="mt-2 text-sm tracking-wide text-gray-500 dark:text-gray-400">Virtual mIF · Research Notebook</p>
         </div>
 
-        {/* Form */}
+        {/* Sign-in */}
         <div className="px-8 py-7">
-          <form onSubmit={(e) => { e.preventDefault(); onLogin() }} className="space-y-4">
-            <div>
-              <label className="label" htmlFor="email">Email</label>
-              <input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="input bg-white dark:bg-gray-900/60" placeholder="you@institution.org" />
-            </div>
-            <div>
-              <label className="label" htmlFor="password">Password</label>
-              <input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="input bg-white dark:bg-gray-900/60" placeholder="••••••••" />
-            </div>
-            <button type="submit" className="btn-primary w-full">Sign in</button>
-          </form>
+          {otpRequired ? (
+            <>
+              <h2 className="text-center font-serif text-xl font-bold text-gray-900 dark:text-white">Check your email</h2>
+              <p className="mt-1.5 text-center text-sm text-gray-500 dark:text-gray-400">Enter the 6-digit code sent to {email}</p>
+              <form onSubmit={handleVerify} className="mt-5 space-y-4">
+                <div>
+                  <label className="label" htmlFor="otp">Verification code</label>
+                  <input id="otp" type="text" inputMode="numeric" maxLength={6} required value={otp} onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))} className="input bg-white dark:bg-gray-900/60" placeholder="123456" />
+                </div>
+                {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+                <button type="submit" disabled={loading} className="btn-primary w-full disabled:cursor-not-allowed disabled:opacity-60">
+                  {loading ? 'Verifying…' : 'Verify'}
+                </button>
+              </form>
+              <p className="mt-4 text-center text-xs text-gray-400 dark:text-gray-500">
+                Didn&rsquo;t get it?{' '}
+                <button type="button" onClick={handleResend} disabled={loading} className="font-semibold text-brand hover:text-brand-dark disabled:opacity-60 dark:text-brand-light">
+                  Resend code
+                </button>
+              </p>
+            </>
+          ) : mode === 'signup' ? (
+            <>
+              <form onSubmit={handleRegister} className="space-y-4">
+                <div>
+                  <label className="label" htmlFor="reg-email">Email</label>
+                  <input id="reg-email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="input bg-white dark:bg-gray-900/60" placeholder="you@institution.org" />
+                </div>
+                <div>
+                  <label className="label" htmlFor="reg-password">Password</label>
+                  <input id="reg-password" type="password" required value={password} onChange={(e) => setPassword(e.target.value)} className="input bg-white dark:bg-gray-900/60" placeholder="••••••••" />
+                </div>
+                <div>
+                  <label className="label" htmlFor="reg-first-name">First Name</label>
+                  <input id="reg-first-name" type="text" value={firstName} onChange={(e) => setFirstName(e.target.value)} className="input bg-white dark:bg-gray-900/60" placeholder="Ada" />
+                </div>
+                <div>
+                  <label className="label" htmlFor="reg-last-name">Last Name</label>
+                  <input id="reg-last-name" type="text" value={lastName} onChange={(e) => setLastName(e.target.value)} className="input bg-white dark:bg-gray-900/60" placeholder="Lovelace" />
+                </div>
+                <div>
+                  <label className="label" htmlFor="reg-lab-name">Lab Name</label>
+                  <input id="reg-lab-name" type="text" value={labName} onChange={(e) => setLabName(e.target.value)} className="input bg-white dark:bg-gray-900/60" placeholder="Research Lab" />
+                </div>
+                {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+                <button type="submit" disabled={loading} className="btn-primary w-full disabled:cursor-not-allowed disabled:opacity-60">
+                  {loading ? 'Creating account…' : 'Create account'}
+                </button>
+              </form>
 
-          <p className="my-4 text-center text-xs font-semibold uppercase tracking-widest text-gray-400">or</p>
+              <p className="mt-4 text-center text-xs text-gray-500 dark:text-gray-400">
+                Already have an account?{' '}
+                <button type="button" onClick={showSignin} className="font-semibold text-brand hover:text-brand-dark dark:text-brand-light">
+                  Sign in
+                </button>
+              </p>
+            </>
+          ) : (
+            <>
+              <form onSubmit={handleSignIn} className="space-y-4">
+                <div>
+                  <label className="label" htmlFor="email">Email</label>
+                  <input id="email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="input bg-white dark:bg-gray-900/60" placeholder="you@institution.org" />
+                </div>
+                <div>
+                  <label className="label" htmlFor="password">Password</label>
+                  <input id="password" type="password" required value={password} onChange={(e) => setPassword(e.target.value)} className="input bg-white dark:bg-gray-900/60" placeholder="••••••••" />
+                </div>
+                {success && <p className="text-sm text-brand dark:text-brand-light">{success}</p>}
+                {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+                <button type="submit" disabled={loading} className="btn-primary w-full disabled:cursor-not-allowed disabled:opacity-60">
+                  {loading ? 'Signing in…' : 'Sign in'}
+                </button>
+              </form>
 
-          <button type="button" onClick={onLogin} className="btn w-full border border-paper-line bg-white text-gray-700 hover:border-brand hover:text-brand dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:border-brand dark:hover:text-brand-light">
-            <GoogleIcon className="h-4 w-4" />
-            Continue with Google
-          </button>
+              <p className="mt-3 text-center text-xs text-gray-500 dark:text-gray-400">
+                Don&rsquo;t have an account?{' '}
+                <button type="button" onClick={showSignup} className="font-semibold text-brand hover:text-brand-dark dark:text-brand-light">
+                  Sign up
+                </button>
+              </p>
+
+              <p className="my-4 text-center text-xs font-semibold uppercase tracking-widest text-gray-400">or</p>
+
+              <button
+                type="button"
+                disabled
+                aria-disabled="true"
+                className="btn w-full cursor-not-allowed border border-paper-line bg-white text-gray-400 opacity-60 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-500"
+              >
+                <GoogleIcon className="h-4 w-4" />
+                Continue with Google
+                <span className="ml-1 rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark:bg-gray-700 dark:text-gray-400">
+                  Coming Soon
+                </span>
+              </button>
+              <p className="mt-3 text-center text-xs text-gray-400 dark:text-gray-500">
+                Google sign-in setup in progress
+              </p>
+            </>
+          )}
         </div>
 
         {/* Research Use Only strip */}

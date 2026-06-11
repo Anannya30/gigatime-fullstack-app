@@ -6,7 +6,10 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
-    // When the Django backend is wired up, proxy /api to it during dev:
-    // proxy: { '/api': { target: 'http://localhost:8000', changeOrigin: true } },
+    // Proxy API + WebSocket traffic to the Dockerized Django backend (NGINX on :80).
+    proxy: {
+      '/api': 'http://localhost',
+      '/ws': { target: 'ws://localhost', ws: true },
+    },
   },
 })

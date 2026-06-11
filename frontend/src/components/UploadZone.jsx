@@ -20,7 +20,8 @@ export default function UploadZone({ file, onFileSelected, onClear }) {
   function handleFiles(fileList) {
     const f = fileList?.[0]
     if (!f) return
-    onFileSelected({ filename: f.name, fileSize: f.size, format: getFormat(f.name), estimatedMinutes: estimateMinutes(f.size) })
+    // `raw` carries the actual File so the page can build a multipart upload.
+    onFileSelected({ filename: f.name, fileSize: f.size, format: getFormat(f.name), estimatedMinutes: estimateMinutes(f.size), raw: f })
   }
 
   if (file) {

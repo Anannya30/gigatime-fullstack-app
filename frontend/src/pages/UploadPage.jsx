@@ -19,19 +19,35 @@ function Field({ label, children }) {
 
 export default function UploadPage({ createSlide, onNavigate, onSlideCreated }) {
   const [file, setFile] = useState(null)
-  const [meta, setMeta] = useState({ patientId: '', specimen: '', histology: '', tissueOrigin: '' })
+  const [meta, setMeta] = useState({ patientId: '', cancerType: '', specimen: '', histology: '', tissueOrigin: '' })
   const [uploading, setUploading] = useState(false)
 
-  const canSubmit = file && !uploading
+  const [error, setError] = useState(null)
+  const canSubmit = file?.raw && !uploading
 
   async function handleSubmit() {
     if (!canSubmit) return
     setUploading(true)
-    // Form action unchanged: createSlide receives the file descriptor + metadata.
-    // tissueOrigin maps directly; histology is preserved as the slide note.
-    const slide = await createSlide({ ...file, ...meta, notes: meta.histology })
-    setUploading(false)
-    onSlideCreated?.(slide)
+    setError(null)
+    // Build a multipart payload for POST /api/slides/upload/. histology is
+    // preserved as the slide note; tissue origin maps directly.
+    const form = new FormData()
+    form.append('file', file.raw)
+    form.append('filename', file.filename)
+    form.append('cancer_type', meta.cancerType || '')
+    form.append('tissue_origin', meta.tissueOrigin || '')
+    form.append('cohort_id', '')
+    form.append('notes', meta.histology || '')
+    form.append('tags', JSON.stringify([]))
+    try {
+      // createSlide uploads then auto-queues inference for the new slide.
+      const slide = await createSlide(form)
+      onSlideCreated?.(slide)
+    } catch (e) {
+      setError(e.message || 'Upload failed')
+    } finally {
+      setUploading(false)
+    }
   }
 
   return (
@@ -51,6 +67,10 @@ export default function UploadPage({ createSlide, onNavigate, onSlideCreated }) 
 
           <Field label="Patient ID">
             <input className={INPUT} value={meta.patientId} onChange={(e) => setMeta({ ...meta, patientId: e.target.value })} placeholder="PT-…" />
+          </Field>
+
+          <Field label="Cancer Type">
+            <input className={INPUT} value={meta.cancerType} onChange={(e) => setMeta({ ...meta, cancerType: e.target.value })} placeholder="e.g. Lung adenocarcinoma" />
           </Field>
 
           <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
@@ -84,6 +104,10 @@ export default function UploadPage({ createSlide, onNavigate, onSlideCreated }) 
               Cancel
             </button>
           </div>
+
+          {error && (
+            <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+          )}
         </div>
 
         {/* Right — On submission */}

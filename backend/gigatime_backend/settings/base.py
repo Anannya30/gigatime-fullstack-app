@@ -38,6 +38,27 @@ def env_list(key, default=""):
     return [item.strip() for item in raw.split(",") if item.strip()]
 
 
+def _env_int(key, default=0):
+    """Read an environment variable as an int (blank/unset → default)."""
+    raw = os.environ.get(key)
+    if raw is None or raw == "":
+        return default
+    return int(raw)
+
+
+def _env_bool(key, default=False):
+    """Read an environment variable as a bool (blank/unset → default)."""
+    raw = os.environ.get(key)
+    if raw is None or raw == "":
+        return default
+    return raw.strip().lower() in ("1", "true", "yes", "on")
+
+
+# Expose ``env.int`` / ``env.bool`` so typed reads are available on the helper.
+env.int = _env_int
+env.bool = _env_bool
+
+
 # ---------------------------------------------------------------------------
 # Core
 # ---------------------------------------------------------------------------
@@ -194,6 +215,20 @@ REST_FRAMEWORK = {
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(days=5),
 }
+
+
+# ---------------------------------------------------------------------------
+# Email (SMTP) + OTP 2FA
+# ---------------------------------------------------------------------------
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_HOST = env('SMTP_HOST', default='localhost')
+EMAIL_PORT = env.int('SMTP_PORT', default=587)
+EMAIL_HOST_USER = env('SMTP_USERNAME', default='')
+EMAIL_HOST_PASSWORD = env('SMTP_PASSWORD', default='')
+EMAIL_USE_TLS = False
+EMAIL_USE_SSL = env.bool('EMAIL_USE_SSL', default=False)
+DEFAULT_FROM_EMAIL = env('SMTP_USERNAME', default='noreply@gigatime.ai')
+OTP_EXPIRY_MINUTES = env.int('OTP_EXPIRY_MINUTES', default=10)
 
 
 # ---------------------------------------------------------------------------

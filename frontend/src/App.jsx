@@ -10,8 +10,10 @@ import ComparisonPage from './pages/ComparisonPage'
 import HistoryPage from './pages/HistoryPage'
 import SettingsPage from './pages/SettingsPage'
 import { useTheme } from './hooks/useTheme'
-import { useMockSlides } from './hooks/useMockSlides'
-import { APP_USER, CONSENT_STORAGE_KEY, SLIDE_STATUS, PAGES } from './utils/constants'
+import { useSlides } from './hooks/useSlides'
+import { useAuth } from './hooks/useAuth'
+import { useWebSocket } from './hooks/useWebSocket'
+import { CONSENT_STORAGE_KEY, SLIDE_STATUS, PAGES } from './utils/constants'
 
 function readConsent() {
   try {
@@ -21,11 +23,22 @@ function readConsent() {
   }
 }
 
+/** Shape the backend user record into what the Navbar expects. */
+function toNavUser(user) {
+  if (!user) return null
+  const name = [user.first_name, user.last_name].filter(Boolean).join(' ') || user.email
+  const initials = (user.first_name?.[0] || user.email?.[0] || 'U').toUpperCase()
+  return { name, institution: user.lab_name || '', initials, email: user.email }
+}
+
 export default function App() {
   const { isDark, toggleTheme } = useTheme()
-  const { slides, loading, stats, getSlideById, updateSlideMeta, createSlide } = useMockSlides()
+  const { slides, loading, refetch, getSlideById, updateSlideMeta, createSlide } = useSlides()
+  const { user, loading: authLoading, otpRequired, login, loginWithEmail, submitOtp, register, logout } = useAuth()
 
-  const [authed, setAuthed] = useState(false)
+  const authed = !!user
+  const { notifications, unreadCount, clearNotification } = useWebSocket(authed, () => refetch())
+
   const [consented, setConsented] = useState(readConsent)
   const [page, setPage] = useState(PAGES.DASHBOARD)
 
@@ -62,8 +75,8 @@ export default function App() {
     setMobileOpen(false)
   }
 
-  function handleLogin() {
-    setAuthed(true)
+  async function handleLogin(credential) {
+    await login(credential)
     setPage(consented ? PAGES.DASHBOARD : PAGES.NOTICE)
   }
   function acceptNotice() {
@@ -76,7 +89,7 @@ export default function App() {
     setPage(PAGES.DASHBOARD)
   }
   function handleLogout() {
-    setAuthed(false)
+    logout()
     setPage(PAGES.DASHBOARD)
   }
   function viewSlide(slide) {
@@ -89,8 +102,21 @@ export default function App() {
     setPage(PAGES.COMPARISON)
   }
 
+  if (authLoading) {
+    return <div className="min-h-screen bg-paper dark:bg-gray-900" />
+  }
   if (!authed) {
-    return <LoginPage onLogin={handleLogin} isDark={isDark} onToggleTheme={toggleTheme} />
+    return (
+      <LoginPage
+        onLogin={handleLogin}
+        isDark={isDark}
+        onToggleTheme={toggleTheme}
+        otpRequired={otpRequired}
+        loginWithEmail={loginWithEmail}
+        submitOtp={submitOtp}
+        register={register}
+      />
+    )
   }
   if (!consented) {
     return (
@@ -105,7 +131,7 @@ export default function App() {
   function renderPage() {
     switch (page) {
       case PAGES.DASHBOARD:
-        return <DashboardPage slides={slides} loading={loading} stats={stats} onNavigate={navigate} onViewSlide={viewSlide} />
+        return <DashboardPage slides={slides} loading={loading} onNavigate={navigate} onViewSlide={viewSlide} />
       case PAGES.UPLOAD:
         return <UploadPage createSlide={createSlide} onNavigate={navigate} onSlideCreated={(slide) => { setToast('Slide uploaded — analysis started'); viewSlide(slide) }} />
       case PAGES.RESULTS:
@@ -138,13 +164,16 @@ export default function App() {
 
       <div className="flex min-w-0 flex-1 flex-col">
         <Navbar
-          user={APP_USER}
+          user={toNavUser(user)}
           isDark={isDark}
           onToggleTheme={toggleTheme}
           onToggleSidebar={() => setMobileOpen((o) => !o)}
           onNavigate={navigate}
           onLogout={handleLogout}
           scrolled={scrolled}
+          notifications={notifications}
+          unreadCount={unreadCount}
+          onClearNotification={clearNotification}
         />
 
         <main className="flex-1 overflow-y-auto px-5 py-8 sm:px-8" onScroll={(e) => setScrolled(e.currentTarget.scrollTop > 4)}>
