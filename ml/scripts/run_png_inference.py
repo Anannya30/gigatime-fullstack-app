@@ -89,7 +89,9 @@ def normalize(tile_rgb_uint8):
 @torch.no_grad()
 def do_inference_binary(model, chw_float32, device):
     """Window an H,W (multiples of 256) normalized tile into 256 sub-tiles, infer
-    each, and return a [23, H, W] uint8 binary mask. Mirrors the notebook's
+    each, and return a tuple (binary_mask, prob_stack). ``binary_mask`` is a
+    [23, H, W] uint8 sigmoid > 0.5 mask and ``prob_stack`` is the matching
+    [23, H, W] float32 raw sigmoid probabilities. Mirrors the notebook's
     do_inference() + sigmoid > 0.5."""
     _, h, w = chw_float32.shape
     x = torch.from_numpy(chw_float32[None]).to(device)
@@ -99,7 +101,9 @@ def do_inference_binary(model, chw_float32, device):
             window = x[:, :, i:i + TILE, j:j + TILE]
             logits[:, :, i:i + TILE, j:j + TILE] = model(window)
     probs = torch.sigmoid(logits)
-    return (probs > 0.5).cpu().numpy().astype(np.uint8)[0]  # [23, h, w]
+    binary = (probs > 0.5).cpu().numpy().astype(np.uint8)[0]  # [23, h, w]
+    prob_stack = probs.cpu().numpy().astype(np.float32)[0]  # [23, h, w]
+    return binary, prob_stack
 
 
 def _resize_binary(mask_23, size):
@@ -111,8 +115,20 @@ def _resize_binary(mask_23, size):
     return out
 
 
+def _resize_prob(prob_23, size):
+    """Resize a [23, H, W] float32 probability stack to (size, size) with nearest
+    so each downsampled probability stays aligned with its binary pixel."""
+    out = np.zeros((NUM_CLASSES, size, size), dtype=np.float32)
+    for c in range(NUM_CLASSES):
+        im = Image.fromarray(prob_23[c]).resize((size, size), Image.NEAREST)
+        out[c] = np.asarray(im, dtype=np.float32)
+    return out
+
+
 def predict_slide(model, png_path, device, resize512=False):
-    """Return a [23, H, W] uint8 binary prediction stack for the full image."""
+    """Return (binary_stack, prob_stack) for the full image. ``binary_stack`` is
+    the [23, H, W] uint8 sigmoid > 0.5 prediction and ``prob_stack`` is the
+    matching [23, H, W] float32 raw sigmoid probabilities."""
     img = Image.open(png_path).convert("RGB")
     w, h = img.size
     arr = np.asarray(img, dtype=np.uint8)  # H, W, 3
@@ -124,6 +140,7 @@ def predict_slide(model, png_path, device, resize512=False):
     H, W = padded.shape[:2]
 
     canvas = np.zeros((NUM_CLASSES, H, W), dtype=np.uint8)
+    prob_canvas = np.zeros((NUM_CLASSES, H, W), dtype=np.float32)
     n_tiles = (H // TILE) * (W // TILE)
     mode = "resize512 (notebook patch path)" if resize512 else "native 256"
     print(f"  {png_path.name}: {w}x{h} -> padded {W}x{H}, {n_tiles} tiles [{mode}]")
@@ -136,13 +153,16 @@ def predict_slide(model, png_path, device, resize512=False):
                 # into 256), then downsample the binary mask back to 256.
                 tile512 = np.asarray(
                     Image.fromarray(tile).resize((512, 512), Image.BILINEAR))
-                pred512 = do_inference_binary(model, normalize(tile512), device)
+                pred512, prob512 = do_inference_binary(
+                    model, normalize(tile512), device)
                 pred = _resize_binary(pred512, TILE)
+                prob = _resize_prob(prob512, TILE)
             else:
-                pred = do_inference_binary(model, normalize(tile), device)
+                pred, prob = do_inference_binary(model, normalize(tile), device)
             canvas[:, y0:y0 + TILE, x0:x0 + TILE] = pred
+            prob_canvas[:, y0:y0 + TILE, x0:x0 + TILE] = prob
 
-    return canvas[:, :h, :w]  # crop padding away
+    return canvas[:, :h, :w], prob_canvas[:, :h, :w]  # crop padding away
 
 
 def write_ome_tiff(out_path, full_pred):
@@ -203,7 +223,8 @@ def main():
         png_path = find_slide(slide_id)
         out_path = DATA_DIR / f"slide_{slide_id}{suffix}.ome.tiff"
         t0 = time.time()
-        full_pred = predict_slide(model, png_path, device, resize512=args.resize512)
+        full_pred, _prob = predict_slide(
+            model, png_path, device, resize512=args.resize512)
         keep, stack = write_ome_tiff(out_path, full_pred)
         print(f"  elapsed: {time.time() - t0:.1f}s")
         print_table(png_path.name, keep, stack)

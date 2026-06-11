@@ -29,21 +29,34 @@ from run_png_inference import (  # noqa: E402
 )
 
 
-def _build_marker_table(pred_stack):
-    """Build [{marker, positive_pixel_pct}] for the 21 analysis channels.
+def _build_marker_table(binary_stack, prob_stack):
+    """Build [{marker, positive_pixel_pct, confidence_score}] for the 21 analysis
+    channels.
 
-    ``pred_stack`` is the [23, H, W] uint8 binary prediction from
-    ``predict_slide``; the two background channels (TRITC, Cy5) are dropped.
+    ``binary_stack`` is the [23, H, W] uint8 sigmoid > 0.5 prediction and
+    ``prob_stack`` is the matching [23, H, W] float32 raw sigmoid probabilities,
+    both from ``predict_slide``; the two background channels (TRITC, Cy5) are
+    dropped. ``confidence_score`` is the mean raw probability over the marker's
+    positive pixels (0.0 when there are none).
     """
-    h, w = pred_stack.shape[1], pred_stack.shape[2]
+    h, w = binary_stack.shape[1], binary_stack.shape[2]
     total = h * w
     table = []
     for idx, name in enumerate(CHANNEL_NAMES):
         if name in BACKGROUND_CHANNELS:
             continue
-        positive = int((pred_stack[idx] == 1).sum())
+        mask = binary_stack[idx] == 1
+        positive = int(mask.sum())
         pct = round(positive / total * 100.0, 2) if total else 0.0
-        table.append({"marker": name, "positive_pixel_pct": pct})
+        if positive:
+            confidence = round(float(prob_stack[idx][mask].mean()), 4)
+        else:
+            confidence = 0.0
+        table.append({
+            "marker": name,
+            "positive_pixel_pct": pct,
+            "confidence_score": confidence,
+        })
     return table
 
 
@@ -85,8 +98,9 @@ def run_batch_inference(batch_job_id):
             # predict_slide() expects a Path (it reads png_path.name); wrap the
             # stored string path so it doesn't fail with "'str' object has no
             # attribute 'name'".
-            pred_stack = predict_slide(model, Path(slide.file_path), device)
-            marker_table = _build_marker_table(pred_stack)
+            binary_stack, prob_stack = predict_slide(
+                model, Path(slide.file_path), device)
+            marker_table = _build_marker_table(binary_stack, prob_stack)
 
             SlideResult.objects.create(slide=slide, marker_table=marker_table)
 

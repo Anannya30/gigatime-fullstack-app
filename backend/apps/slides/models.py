@@ -78,7 +78,8 @@ class SlideResult(models.Model):
         on_delete=models.CASCADE,
         related_name="result",
     )
-    # List of {"marker": ..., "positive_pixel_pct": ...} entries.
+    # List of {"marker": str, "positive_pixel_pct": float,
+    # "confidence_score": float} entries.
     marker_table = models.JSONField()
     created_at = models.DateTimeField(auto_now_add=True)
 
