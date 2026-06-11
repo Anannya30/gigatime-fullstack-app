@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Eye, EyeOff } from 'lucide-react'
 import { Wordmark } from '../components/Navbar'
 import ThemeToggle from '../components/ThemeToggle'
 
@@ -13,14 +14,47 @@ function GoogleIcon({ className }) {
   )
 }
 
-export default function LoginPage({ isDark, onToggleTheme, otpRequired, loginWithEmail, submitOtp, register }) {
-  const [mode, setMode] = useState('signin') // 'signin' | 'signup'
+/** Password input with an inline eye toggle (same `input` styling + right icon). */
+function PasswordInput({ id, value, onChange, placeholder, show, onToggle }) {
+  return (
+    <div className="relative">
+      <input
+        id={id}
+        type={show ? 'text' : 'password'}
+        required
+        value={value}
+        onChange={onChange}
+        className="input bg-white pr-10 dark:bg-gray-900/60"
+        placeholder={placeholder}
+      />
+      <button
+        type="button"
+        onClick={onToggle}
+        tabIndex={-1}
+        aria-label={show ? 'Hide password' : 'Show password'}
+        className="absolute inset-y-0 right-0 flex cursor-pointer items-center pr-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+      >
+        {show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+      </button>
+    </div>
+  )
+}
+
+export default function LoginPage({ isDark, onToggleTheme, otpRequired, loginWithEmail, submitOtp, register, forgotPassword, verifyForgotOtp, resetPassword }) {
+  // 'signin' | 'signup' | 'forgot' | 'forgot-otp' | 'reset-password'
+  const [mode, setMode] = useState('signin')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [firstName, setFirstName] = useState('')
   const [lastName, setLastName] = useState('')
   const [labName, setLabName] = useState('')
   const [otp, setOtp] = useState('')
+  const [forgotOtp, setForgotOtp] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
+  const [showNewPassword, setShowNewPassword] = useState(false)
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [success, setSuccess] = useState(null)
@@ -34,6 +68,62 @@ export default function LoginPage({ isDark, onToggleTheme, otpRequired, loginWit
     setMode('signup')
     setError(null)
     setSuccess(null)
+  }
+  function showForgot() {
+    setMode('forgot')
+    setError(null)
+    setSuccess(null)
+  }
+
+  async function handleForgotRequest(e) {
+    e.preventDefault()
+    setError(null)
+    setLoading(true)
+    try {
+      await forgotPassword(email)
+      setMode('forgot-otp')
+    } catch (err) {
+      setError(err.message || 'Could not send reset code')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleForgotVerify(e) {
+    e.preventDefault()
+    setError(null)
+    setLoading(true)
+    try {
+      await verifyForgotOtp(forgotOtp)
+      setMode('reset-password')
+    } catch (err) {
+      setError(err.message || 'Verification failed')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleResetPassword(e) {
+    e.preventDefault()
+    setError(null)
+    if (newPassword !== confirmPassword) {
+      setError('Passwords do not match')
+      return
+    }
+    setLoading(true)
+    try {
+      await resetPassword(newPassword)
+      setSuccess('Password reset! Please sign in.')
+      setMode('signin')
+      setPassword('')
+      setNewPassword('')
+      setConfirmPassword('')
+      setForgotOtp('')
+    } catch (err) {
+      setError(err.message || 'Could not reset password')
+    } finally {
+      setLoading(false)
+    }
   }
 
   async function handleRegister(e) {
@@ -137,7 +227,7 @@ export default function LoginPage({ isDark, onToggleTheme, otpRequired, loginWit
                 </div>
                 <div>
                   <label className="label" htmlFor="reg-password">Password</label>
-                  <input id="reg-password" type="password" required value={password} onChange={(e) => setPassword(e.target.value)} className="input bg-white dark:bg-gray-900/60" placeholder="••••••••" />
+                  <PasswordInput id="reg-password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" show={showPassword} onToggle={() => setShowPassword((s) => !s)} />
                 </div>
                 <div>
                   <label className="label" htmlFor="reg-first-name">First Name</label>
@@ -164,6 +254,64 @@ export default function LoginPage({ isDark, onToggleTheme, otpRequired, loginWit
                 </button>
               </p>
             </>
+          ) : mode === 'forgot' ? (
+            <>
+              <h2 className="text-center font-serif text-xl font-bold text-gray-900 dark:text-white">Reset your password</h2>
+              <p className="mt-1.5 text-center text-sm text-gray-500 dark:text-gray-400">Enter your email and we&rsquo;ll send you a reset code</p>
+              <form onSubmit={handleForgotRequest} className="mt-5 space-y-4">
+                <div>
+                  <label className="label" htmlFor="forgot-email">Email</label>
+                  <input id="forgot-email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="input bg-white dark:bg-gray-900/60" placeholder="you@institution.org" />
+                </div>
+                {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+                <button type="submit" disabled={loading} className="btn-primary w-full disabled:cursor-not-allowed disabled:opacity-60">
+                  {loading ? 'Sending…' : 'Send reset code'}
+                </button>
+              </form>
+              <p className="mt-4 text-center text-xs text-gray-500 dark:text-gray-400">
+                <button type="button" onClick={showSignin} className="font-semibold text-brand hover:text-brand-dark dark:text-brand-light">
+                  Back to sign in
+                </button>
+              </p>
+            </>
+          ) : mode === 'forgot-otp' ? (
+            <>
+              <h2 className="text-center font-serif text-xl font-bold text-gray-900 dark:text-white">Check your email</h2>
+              <p className="mt-1.5 text-center text-sm text-gray-500 dark:text-gray-400">Enter the 6-digit reset code sent to {email}</p>
+              <form onSubmit={handleForgotVerify} className="mt-5 space-y-4">
+                <div>
+                  <label className="label" htmlFor="forgot-otp">Reset code</label>
+                  <input id="forgot-otp" type="text" inputMode="numeric" maxLength={6} required value={forgotOtp} onChange={(e) => setForgotOtp(e.target.value.replace(/\D/g, '').slice(0, 6))} className="input bg-white dark:bg-gray-900/60" placeholder="123456" />
+                </div>
+                {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+                <button type="submit" disabled={loading} className="btn-primary w-full disabled:cursor-not-allowed disabled:opacity-60">
+                  {loading ? 'Verifying…' : 'Verify code'}
+                </button>
+              </form>
+              <p className="mt-4 text-center text-xs text-gray-500 dark:text-gray-400">
+                <button type="button" onClick={() => { setMode('forgot'); setError(null) }} className="font-semibold text-brand hover:text-brand-dark dark:text-brand-light">
+                  Back
+                </button>
+              </p>
+            </>
+          ) : mode === 'reset-password' ? (
+            <>
+              <h2 className="text-center font-serif text-xl font-bold text-gray-900 dark:text-white">Set new password</h2>
+              <form onSubmit={handleResetPassword} className="mt-5 space-y-4">
+                <div>
+                  <label className="label" htmlFor="new-password">New password</label>
+                  <PasswordInput id="new-password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="••••••••" show={showNewPassword} onToggle={() => setShowNewPassword((s) => !s)} />
+                </div>
+                <div>
+                  <label className="label" htmlFor="confirm-password">Confirm password</label>
+                  <PasswordInput id="confirm-password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="••••••••" show={showConfirmPassword} onToggle={() => setShowConfirmPassword((s) => !s)} />
+                </div>
+                {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+                <button type="submit" disabled={loading} className="btn-primary w-full disabled:cursor-not-allowed disabled:opacity-60">
+                  {loading ? 'Resetting…' : 'Reset password'}
+                </button>
+              </form>
+            </>
           ) : (
             <>
               <form onSubmit={handleSignIn} className="space-y-4">
@@ -173,7 +321,12 @@ export default function LoginPage({ isDark, onToggleTheme, otpRequired, loginWit
                 </div>
                 <div>
                   <label className="label" htmlFor="password">Password</label>
-                  <input id="password" type="password" required value={password} onChange={(e) => setPassword(e.target.value)} className="input bg-white dark:bg-gray-900/60" placeholder="••••••••" />
+                  <PasswordInput id="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" show={showPassword} onToggle={() => setShowPassword((s) => !s)} />
+                  <p className="mt-1.5 text-right text-xs">
+                    <button type="button" onClick={showForgot} className="font-semibold text-brand hover:text-brand-dark dark:text-brand-light">
+                      Forgot password?
+                    </button>
+                  </p>
                 </div>
                 {success && <p className="text-sm text-brand dark:text-brand-light">{success}</p>}
                 {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}

@@ -1,5 +1,15 @@
 import { useCallback, useEffect, useState } from 'react'
-import { googleLogin, emailLogin, verifyOtp, register as authRegister, getMe, logout as authLogout } from '../api/authApi'
+import {
+  googleLogin,
+  emailLogin,
+  verifyOtp,
+  register as authRegister,
+  forgotPassword as authForgotPassword,
+  verifyForgotOtp as authVerifyForgotOtp,
+  resetPassword as authResetPassword,
+  getMe,
+  logout as authLogout,
+} from '../api/authApi'
 import { ACCESS_TOKEN_KEY } from '../api/slidesApi'
 
 /**
@@ -12,6 +22,9 @@ export function useAuth() {
   // Email+password → OTP two-step login state.
   const [otpRequired, setOtpRequired] = useState(false)
   const [sessionToken, setSessionToken] = useState('')
+  // Forgot-password flow tokens (kept internal so callers pass only otp/password).
+  const [forgotSession, setForgotSession] = useState('')
+  const [resetToken, setResetToken] = useState('')
 
   useEffect(() => {
     let active = true
@@ -68,12 +81,49 @@ export function useAuth() {
     return data?.message
   }, [])
 
+  // Forgot-password step 1: request a reset code; stores the session token.
+  const forgotPassword = useCallback(async (email) => {
+    const data = await authForgotPassword(email)
+    setForgotSession(data?.session_token || '')
+    return data
+  }, [])
+
+  // Forgot-password step 2: verify the reset OTP; stores the reset token.
+  const verifyForgotOtp = useCallback(async (otp) => {
+    const data = await authVerifyForgotOtp(forgotSession, otp)
+    setResetToken(data?.reset_token || '')
+    return data
+  }, [forgotSession])
+
+  // Forgot-password step 3: set the new password, then clear the flow tokens.
+  const resetPassword = useCallback(async (newPassword) => {
+    const data = await authResetPassword(resetToken, newPassword)
+    setForgotSession('')
+    setResetToken('')
+    return data
+  }, [resetToken])
+
   const logout = useCallback(() => {
     authLogout()
     setUser(null)
     setOtpRequired(false)
     setSessionToken('')
+    setForgotSession('')
+    setResetToken('')
   }, [])
 
-  return { user, loading, otpRequired, sessionToken, login, loginWithEmail, submitOtp, register, logout }
+  return {
+    user,
+    loading,
+    otpRequired,
+    sessionToken,
+    login,
+    loginWithEmail,
+    submitOtp,
+    register,
+    forgotPassword,
+    verifyForgotOtp,
+    resetPassword,
+    logout,
+  }
 }

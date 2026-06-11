@@ -260,3 +260,118 @@ class OTPVerifyTests(APITestCase):
 
         self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertEqual(resp.data["detail"], "OTP already used")
+
+
+class ForgotPasswordTests(APITestCase):
+    def setUp(self):
+        self.request_url = reverse("accounts:forgot-password")
+        self.verify_url = reverse("accounts:forgot-password-verify")
+        self.reset_url = reverse("accounts:reset-password")
+        self.user = User.objects.create_user(
+            email="researcher@gigatime.org",
+            password="original-pass",
+        )
+
+    @patch("apps.accounts.views.send_mail")
+    def test_forgot_password_existing_email(self, mock_send_mail):
+        resp = self.client.post(
+            self.request_url,
+            {"email": "researcher@gigatime.org"},
+            format="json",
+        )
+
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            resp.data["message"], "If this email exists, a code has been sent."
+        )
+        self.assertIn("session_token", resp.data)
+        mock_send_mail.assert_called_once()
+
+        otp_token = OTPToken.objects.get(session_token=resp.data["session_token"])
+        self.assertEqual(otp_token.user, self.user)
+        self.assertFalse(otp_token.is_used)
+
+    @patch("apps.accounts.views.send_mail")
+    def test_forgot_password_unknown_email(self, mock_send_mail):
+        resp = self.client.post(
+            self.request_url,
+            {"email": "nobody@gigatime.org"},
+            format="json",
+        )
+
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            resp.data["message"], "If this email exists, a code has been sent."
+        )
+        # Same shape (dummy token), no OTP created and no email sent.
+        self.assertIn("session_token", resp.data)
+        self.assertEqual(OTPToken.objects.count(), 0)
+        mock_send_mail.assert_not_called()
+
+    def _make_otp(self):
+        return OTPToken.objects.create(
+            user=self.user,
+            token="123456",
+            session_token="reset-session-abc",
+            expires_at=timezone.now() + timedelta(minutes=10),
+        )
+
+    def test_forgot_password_verify_correct(self):
+        self._make_otp()
+
+        resp = self.client.post(
+            self.verify_url,
+            {"session_token": "reset-session-abc", "otp": "123456"},
+            format="json",
+        )
+
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(resp.data["reset_token"], "reset-session-abc")
+        # OTP must NOT be consumed yet — password not set.
+        self.assertFalse(OTPToken.objects.get(session_token="reset-session-abc").is_used)
+
+    def test_forgot_password_verify_wrong_otp(self):
+        self._make_otp()
+
+        resp = self.client.post(
+            self.verify_url,
+            {"session_token": "reset-session-abc", "otp": "000000"},
+            format="json",
+        )
+
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(resp.data["detail"], "Invalid OTP")
+
+    def test_reset_password_success(self):
+        self._make_otp()
+
+        resp = self.client.post(
+            self.reset_url,
+            {"reset_token": "reset-session-abc", "new_password": "brand-new-pass"},
+            format="json",
+        )
+
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            resp.data["message"], "Password reset successfully. You can now sign in."
+        )
+
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password("brand-new-pass"))
+        self.assertTrue(OTPToken.objects.get(session_token="reset-session-abc").is_used)
+
+    def test_reset_password_short(self):
+        self._make_otp()
+
+        resp = self.client.post(
+            self.reset_url,
+            {"reset_token": "reset-session-abc", "new_password": "short"},
+            format="json",
+        )
+
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(resp.data["detail"], "Password must be at least 8 characters")
+        # Unchanged password, OTP not consumed.
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password("original-pass"))
+        self.assertFalse(OTPToken.objects.get(session_token="reset-session-abc").is_used)

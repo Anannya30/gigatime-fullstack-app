@@ -269,6 +269,164 @@ class OTPVerifyView(APIView):
         )
 
 
+class ForgotPasswordRequestView(APIView):
+    """POST /api/auth/forgot-password/ — email a password-reset OTP.
+
+    Always responds identically (with a session_token) whether or not the email
+    exists, so the endpoint never reveals which addresses are registered.
+    """
+
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def post(self, request):
+        email = request.data.get("email")
+        message = "If this email exists, a code has been sent."
+
+        try:
+            user = User.objects.get(email=email)
+        except User.DoesNotExist:
+            user = None
+
+        if user is None:
+            # Return a dummy session token so the response is indistinguishable.
+            return Response(
+                {"message": message, "session_token": secrets.token_urlsafe(32)},
+                status=status.HTTP_200_OK,
+            )
+
+        otp = str(random.randint(100000, 999999))
+        session_token = secrets.token_urlsafe(32)
+        expiry_minutes = getattr(settings, "OTP_EXPIRY_MINUTES", 10)
+        OTPToken.objects.create(
+            user=user,
+            token=otp,
+            session_token=session_token,
+            expires_at=timezone.now() + timedelta(minutes=expiry_minutes),
+        )
+
+        send_mail(
+            subject="GigaTIME — Password reset code",
+            message=(
+                f"Your password reset code is: {otp}\n\n"
+                "This code expires in 10 minutes.\n\n"
+                "If you did not request this, please ignore this email."
+            ),
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[user.email],
+            fail_silently=False,
+        )
+
+        return Response(
+            {"message": message, "session_token": session_token},
+            status=status.HTTP_200_OK,
+        )
+
+
+class ForgotPasswordVerifyOTPView(APIView):
+    """POST /api/auth/forgot-password/verify/ — validate a reset OTP.
+
+    Does NOT consume the OTP; the user still needs to submit a new password.
+    Returns the same token back as ``reset_token`` for the reset step.
+    """
+
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def post(self, request):
+        session_token = request.data.get("session_token")
+        otp = request.data.get("otp")
+
+        try:
+            otp_token = OTPToken.objects.get(session_token=session_token)
+        except OTPToken.DoesNotExist:
+            return Response(
+                {"detail": "Invalid session"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if otp_token.is_used:
+            return Response(
+                {"detail": "OTP already used"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if otp_token.expires_at <= timezone.now():
+            return Response(
+                {"detail": "OTP expired"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if otp_token.token != otp:
+            return Response(
+                {"detail": "Invalid OTP"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return Response(
+            {"reset_token": session_token},
+            status=status.HTTP_200_OK,
+        )
+
+
+class ResetPasswordView(APIView):
+    """POST /api/auth/reset-password/ — set a new password using a reset token."""
+
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def post(self, request):
+        reset_token = request.data.get("reset_token")
+        new_password = request.data.get("new_password") or ""
+
+        try:
+            otp_token = OTPToken.objects.get(session_token=reset_token)
+        except OTPToken.DoesNotExist:
+            return Response(
+                {"detail": "Invalid session"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if otp_token.is_used:
+            return Response(
+                {"detail": "OTP already used"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if otp_token.expires_at <= timezone.now():
+            return Response(
+                {"detail": "OTP expired"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if len(new_password) < 8:
+            return Response(
+                {"detail": "Password must be at least 8 characters"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        otp_token.is_used = True
+        otp_token.save(update_fields=["is_used"])
+
+        user = otp_token.user
+        user.set_password(new_password)
+        user.save()
+
+        log_action(
+            user=user,
+            action="auth.password_reset",
+            resource_type="User",
+            resource_id=user.id,
+            request=request,
+            payload_snapshot={"email": user.email},
+            response_status=status.HTTP_200_OK,
+        )
+        return Response(
+            {"message": "Password reset successfully. You can now sign in."},
+            status=status.HTTP_200_OK,
+        )
+
+
 class RefreshTokenView(TokenRefreshView):
     """POST /api/auth/refresh/ — exchange a refresh token for a new access token."""
 

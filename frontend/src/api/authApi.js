@@ -45,6 +45,45 @@ export async function register(email, password, firstName, lastName, labName) {
 }
 
 /**
+ * POST /api/auth/forgot-password/ — request a password-reset code. Returns
+ * {message, session_token} (the session_token is always present).
+ */
+export async function forgotPassword(email) {
+  const res = await fetch(`${API_BASE}/auth/forgot-password/`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email }),
+  })
+  return handleResponse(res)
+}
+
+/**
+ * POST /api/auth/forgot-password/verify/ — validate a reset OTP. Returns
+ * {reset_token} on success; throws the backend error otherwise.
+ */
+export async function verifyForgotOtp(session_token, otp) {
+  const res = await fetch(`${API_BASE}/auth/forgot-password/verify/`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ session_token, otp }),
+  })
+  return handleResponse(res)
+}
+
+/**
+ * POST /api/auth/reset-password/ — set a new password using a reset token.
+ * Returns {message} on success; throws the backend error otherwise.
+ */
+export async function resetPassword(reset_token, new_password) {
+  const res = await fetch(`${API_BASE}/auth/reset-password/`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reset_token, new_password }),
+  })
+  return handleResponse(res)
+}
+
+/**
  * POST /api/auth/login/ — verify email + password. On success the backend
  * emails a 6-digit OTP and returns {otp_required, session_token}.
  */

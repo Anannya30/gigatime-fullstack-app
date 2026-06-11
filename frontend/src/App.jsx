@@ -34,7 +34,7 @@ function toNavUser(user) {
 export default function App() {
   const { isDark, toggleTheme } = useTheme()
   const { slides, loading, refetch, getSlideById, updateSlideMeta, createSlide } = useSlides()
-  const { user, loading: authLoading, otpRequired, login, loginWithEmail, submitOtp, register, logout } = useAuth()
+  const { user, loading: authLoading, otpRequired, login, loginWithEmail, submitOtp, register, forgotPassword, verifyForgotOtp, resetPassword, logout } = useAuth()
 
   const authed = !!user
   const { notifications, unreadCount, clearNotification } = useWebSocket(authed, () => refetch())
@@ -115,6 +115,9 @@ export default function App() {
         loginWithEmail={loginWithEmail}
         submitOtp={submitOtp}
         register={register}
+        forgotPassword={forgotPassword}
+        verifyForgotOtp={verifyForgotOtp}
+        resetPassword={resetPassword}
       />
     )
   }
