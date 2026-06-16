@@ -33,11 +33,11 @@ function toNavUser(user) {
 
 export default function App() {
   const { isDark, toggleTheme } = useTheme()
-  const { slides, loading, refetch, getSlideById, updateSlideMeta, createSlide } = useSlides()
+  const { slides, loading, refetch, getSlideById, updateSlideMeta, createSlide, applyProgress } = useSlides()
   const { user, loading: authLoading, otpRequired, login, loginWithEmail, submitOtp, register, forgotPassword, verifyForgotOtp, resetPassword, logout } = useAuth()
 
   const authed = !!user
-  const { notifications, unreadCount, clearNotification } = useWebSocket(authed, () => refetch())
+  const { notifications, unreadCount, clearNotification } = useWebSocket(authed, () => refetch(), applyProgress)
 
   const [consented, setConsented] = useState(readConsent)
   const [page, setPage] = useState(PAGES.DASHBOARD)

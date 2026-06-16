@@ -32,6 +32,19 @@ function formatOf(filename) {
   return ext || null
 }
 
+/** Build the live tiles-processed progress object from a backend Slide payload,
+ *  or null when the slide hasn't been planned yet (tiles_total unknown). */
+function progressFrom(raw) {
+  const total = raw.tiles_total
+  if (!total || total <= 0) return null
+  const done = raw.tiles_done ?? 0
+  return {
+    tilesDone: done,
+    tilesTotal: total,
+    pct: Math.min(100, Math.round((done / total) * 100)),
+  }
+}
+
 /** Map a backend Slide payload to the camelCase shape the UI components expect. */
 function normalizeSlide(raw) {
   return {
@@ -54,7 +67,7 @@ function normalizeSlide(raw) {
     duration: durationSeconds(raw.started_at, raw.completed_at),
     errorMessage: raw.error_message || '',
     meanPearson: null,
-    progress: null,
+    progress: progressFrom(raw),
   }
 }
 
@@ -118,9 +131,17 @@ export function useSlides() {
             const updated = normalizeSlide(await getSlide(id))
             if (!ACTIVE_BACKEND.has(updated.backendStatus)) anyTerminal = true
             setSlides((prev) => {
-              const next = prev.map((s) =>
-                s.id === id && s.backendStatus !== updated.backendStatus ? updated : s
-              )
+              const next = prev.map((s) => {
+                if (s.id !== id) return s
+                // Swap in the fresh row when the status changed OR the
+                // tiles-processed progress advanced, so the bar keeps moving
+                // even while the slide stays RUNNING.
+                const changed =
+                  s.backendStatus !== updated.backendStatus ||
+                  s.progress?.tilesDone !== updated.progress?.tilesDone ||
+                  s.progress?.tilesTotal !== updated.progress?.tilesTotal
+                return changed ? updated : s
+              })
               slidesRef.current = next
               return next
             })
@@ -138,6 +159,22 @@ export function useSlides() {
     (id) => slides.find((s) => s.id === id) || null,
     [slides]
   )
+
+  // Live progress push from the WebSocket (slide.progress events). Merges the
+  // tiles-processed counts onto the matching slide without a network round-trip.
+  const applyProgress = useCallback((slideId, progress) => {
+    setSlides((prev) => {
+      let touched = false
+      const next = prev.map((s) => {
+        if (s.id !== slideId) return s
+        touched = true
+        return { ...s, progress }
+      })
+      if (!touched) return prev
+      slidesRef.current = next
+      return next
+    })
+  }, [])
 
   const updateSlideMeta = useCallback(async (id, patch) => {
     // Optimistic update, then reconcile with the server response.
@@ -184,5 +221,6 @@ export function useSlides() {
     getSlideById,
     updateSlideMeta,
     createSlide,
+    applyProgress,
   }
 }

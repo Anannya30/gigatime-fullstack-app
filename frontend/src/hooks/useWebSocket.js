@@ -12,18 +12,21 @@ let notifSeq = 0
  * notifications and invokes `onSlideUpdate` so the slide list can refetch.
  *
  * @param {boolean} enabled  connect only when true (e.g. authenticated)
- * @param {Function} [onSlideUpdate]  called on every slide status event
+ * @param {Function} [onSlideUpdate]  called on slide.complete / slide.failed
+ * @param {Function} [onProgress]  called on slide.progress: (slideId, progress)
  */
-export function useWebSocket(enabled, onSlideUpdate) {
+export function useWebSocket(enabled, onSlideUpdate, onProgress) {
   const [notifications, setNotifications] = useState([])
   const socketRef = useRef(null)
   const reconnectRef = useRef(null)
   const closedRef = useRef(false)
-  // Keep the latest callback without forcing reconnects.
+  // Keep the latest callbacks without forcing reconnects.
   const onUpdateRef = useRef(onSlideUpdate)
+  const onProgressRef = useRef(onProgress)
   useEffect(() => {
     onUpdateRef.current = onSlideUpdate
-  }, [onSlideUpdate])
+    onProgressRef.current = onProgress
+  }, [onSlideUpdate, onProgress])
 
   useEffect(() => {
     if (!enabled) return undefined
@@ -40,6 +43,20 @@ export function useWebSocket(enabled, onSlideUpdate) {
         try {
           msg = JSON.parse(event.data)
         } catch {
+          return
+        }
+        if (msg.type === 'slide.progress') {
+          // Live tiles-processed update for an in-flight slide — no toast, just
+          // drive the progress bar.
+          const total = msg.tiles_total
+          if (total && total > 0) {
+            const done = msg.tiles_done ?? 0
+            onProgressRef.current?.(msg.slide_id, {
+              tilesDone: done,
+              tilesTotal: total,
+              pct: Math.min(100, Math.round((done / total) * 100)),
+            })
+          }
           return
         }
         if (msg.type === 'slide.complete' || msg.type === 'slide.failed') {

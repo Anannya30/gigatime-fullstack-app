@@ -4,6 +4,8 @@
 services:
   db:
     image: postgres:16
+    ports:
+      - "5433:5432"
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-gigatime_db}
       POSTGRES_USER: ${POSTGRES_USER:-gigatime_user}
@@ -47,6 +49,7 @@ services:
       # ML inference code (run_png_inference.py and friends).
       - ./ml/scripts:/app/ml/scripts
       - ./ml/environment.yml:/app/ml/environment.yml
+      - ~/.cache/huggingface:/root/.cache/huggingface
     command: >
       sh -c "python manage.py migrate --settings=gigatime_backend.settings.production &&
              gunicorn gigatime_backend.asgi:application -w 4 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000"
@@ -57,6 +60,13 @@ services:
       - backend
       - redis
       - db
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
     env_file:
       - ./backend/.env
     environment:
@@ -65,10 +75,13 @@ services:
       REDIS_URL: redis://redis:6379/0
       ALLOWED_HOSTS: localhost,127.0.0.1,backend,nginx
       PYTHONPATH: /app/ml/scripts
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
     volumes:
       - ./ml/data:/app/ml/data
       - ./ml/scripts:/app/ml/scripts
       - ./ml/environment.yml:/app/ml/environment.yml
+      - ~/.cache/huggingface:/root/.cache/huggingface
     command: celery -A gigatime_backend worker --loglevel=info
 
   frontend:

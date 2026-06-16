@@ -17,6 +17,8 @@ class SlideSerializer(serializers.ModelSerializer):
             "started_at",
             "completed_at",
             "file_path",
+            "mpp_value",
+            "mpp_source",
         ]
 
 

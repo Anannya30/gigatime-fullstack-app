@@ -45,10 +45,24 @@ class Slide(models.Model):
         default=SlideStatus.CREATED,
     )
 
+    # Microns-per-pixel actually used during inference, plus where it came from.
+    # mpp_source is "metadata" when read from the slide (or a --mpp override) and
+    # "assumed_default_0.25" when no metadata was found and the 40x default was
+    # assumed -- so we can tell which slides ran on a real value vs a fallback.
+    mpp_value = models.FloatField(null=True, blank=True)
+    mpp_source = models.CharField(max_length=32, null=True, blank=True)
+
     submitted_at = models.DateTimeField(auto_now_add=True)
     started_at = models.DateTimeField(null=True, blank=True)
     completed_at = models.DateTimeField(null=True, blank=True)
     error_message = models.TextField(blank=True)
+
+    # Live tile-processing progress, updated by the inference task while
+    # status == RUNNING so the UI can render a "tiles processed" bar. tiles_total
+    # is None until the slide is planned; tiles_done counts tiles streamed
+    # (background-skipped tiles included, since they are still "processed").
+    tiles_total = models.IntegerField(null=True, blank=True)
+    tiles_done = models.IntegerField(default=0)
 
     # Soft delete bookkeeping.
     is_deleted = models.BooleanField(default=False)

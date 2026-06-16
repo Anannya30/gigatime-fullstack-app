@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { ChevronDown, Download, FileText } from 'lucide-react'
-import ProgressCard from '../components/ProgressCard'
+import TileProgressBar from '../components/TileProgressBar'
 import StatusBadge from '../components/StatusBadge'
 import { getSlideResults, downloadTiff } from '../api/slidesApi'
 import { SLIDE_STATUS, PAGES } from '../utils/constants'
@@ -151,7 +151,14 @@ export default function ResultsPage({ slide, onNavigate, onToast }) {
       <div>
         <p className={EYEBROW}>Predicted Marker Channels · 21</p>
         {!isDone ? (
-          <p className="mt-4 text-sm italic text-[#928E82]">Marker channels are available once analysis completes.</p>
+          isRunning && slide.progress ? (
+            <div className="mt-4 max-w-md">
+              <TileProgressBar progress={slide.progress} />
+              <p className="mt-3 text-sm italic text-[#928E82]">Streaming inference — marker channels appear when analysis completes.</p>
+            </div>
+          ) : (
+            <p className="mt-4 text-sm italic text-[#928E82]">Marker channels are available once analysis completes.</p>
+          )
         ) : resultsError ? (
           <p className="mt-4 text-sm italic text-red-600 dark:text-red-400">{resultsError}</p>
         ) : markerTable == null ? (

@@ -2,16 +2,17 @@ import os
 import shutil
 import tempfile
 import uuid
+from unittest.mock import MagicMock, patch
 
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import override_settings
+from django.test import TransactionTestCase, override_settings
 from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APITestCase
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from .models import Slide
+from .models import Slide, SlideStatus
 
 User = get_user_model()
 
@@ -165,3 +166,68 @@ class SlideTests(APITestCase):
                 status.HTTP_401_UNAUTHORIZED,
                 msg=f"{method.upper()} {url} should require auth",
             )
+
+
+# A WSI inference results dict in the shape run_wsi_inference.infer_slide returns,
+# carrying the MPP value + source the task is expected to persist onto the slide.
+FAKE_WSI_RESULTS = {
+    "slide": "wsi.tif",
+    "output_path": "/tmp/wsi_pred.ome.tiff",
+    "native_mpp": 0.25,
+    "mpp_source": "assumed_default_0.25",
+    "effective_mpp": 0.5,
+    "output_dims": {"width": 256, "height": 256},
+    "total_output_pixels": 65536,
+    "tissue_pixels": 65536,
+    "tiles": {"total": 1, "run": 1, "skipped": 0},
+    "elapsed_sec": 0.1,
+    "markers": [
+        {
+            "name": "PD-1",
+            "positive_pixel_pct": 12.5,
+            "mean_sigmoid_tissue": 0.6,
+            "mean_sigmoid_positive": 0.8,
+            "paper_pearson": None,
+        },
+    ],
+}
+
+
+@override_settings(
+    MEDIA_ROOT=TEMP_MEDIA,
+    CELERY_TASK_ALWAYS_EAGER=True,
+    CELERY_TASK_EAGER_PROPAGATES=True,
+    CHANNEL_LAYERS={"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}},
+)
+class SlideMppPersistenceTests(TransactionTestCase):
+    """After a completed WSI inference the slide should record the MPP that was
+    used and where it came from, so a fallback is distinguishable from a real
+    value."""
+
+    def test_mpp_persisted_after_inference(self):
+        from apps.inference.models import BatchJob
+        from apps.inference.tasks import run_batch_inference
+
+        user = User.objects.create_user(email="mpp@gigatime.org")
+        slide = Slide.objects.create(
+            owner=user,
+            filename="wsi.tif",
+            original_filename="wsi.tif",
+            file_path="/tmp/wsi.tif",  # .tif -> WSI streaming path
+            status=SlideStatus.CREATED,
+        )
+        batch = BatchJob.objects.create(owner=user)
+        batch.slides.set([slide])
+
+        with patch("apps.inference.tasks.load_model", return_value=MagicMock()), \
+                patch("run_wsi_inference.infer_slide", return_value=FAKE_WSI_RESULTS):
+            run_batch_inference.delay(str(batch.id))
+
+        slide.refresh_from_db()
+
+        self.assertEqual(slide.status, SlideStatus.COMPLETED)
+        # MPP value + source are populated (not null) after a completed inference.
+        self.assertIsNotNone(slide.mpp_value)
+        self.assertIsNotNone(slide.mpp_source)
+        self.assertEqual(slide.mpp_value, 0.25)
+        self.assertEqual(slide.mpp_source, "assumed_default_0.25")

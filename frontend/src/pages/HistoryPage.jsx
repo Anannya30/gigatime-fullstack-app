@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { ChevronDown, ChevronLeft, ChevronRight, ChevronsUpDown, GitCompareArrows, Search } from 'lucide-react'
 import StatusBadge from '../components/StatusBadge'
+import TileProgressBar from '../components/TileProgressBar'
 import { getSlideResults } from '../api/slidesApi'
 import { CANCER_TYPES, SLIDE_STATUS } from '../utils/constants'
 import { cn, formatDateTime, formatDuration, paginate, pageCount, scoreColor } from '../utils/helpers'
@@ -191,6 +192,9 @@ function Row({ slide, selected, expanded, onToggleSelect, onToggleExpand, onView
         <td className="max-w-[240px] px-4 py-3.5">
           <button type="button" onClick={onView} className="block max-w-full truncate text-left font-medium text-gray-900 hover:text-brand dark:text-white" title={slide.filename}>{slide.filename}</button>
           <span className="font-mono text-[11px] text-gray-400">{slide.id}</span>
+          {slide.status === SLIDE_STATUS.RUNNING && slide.progress && (
+            <TileProgressBar progress={slide.progress} compact />
+          )}
         </td>
         <td className="px-4 py-3.5 text-gray-500 dark:text-gray-400">{slide.cancerType}</td>
         <td className="px-4 py-3.5"><StatusBadge status={slide.status} /></td>

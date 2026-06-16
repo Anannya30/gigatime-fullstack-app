@@ -17,9 +17,12 @@ from .models import BatchJob, BatchJobStatus
 
 User = get_user_model()
 
-# A 23-channel binary prediction stack with a known number of positive pixels.
+# A 23-channel binary prediction stack with a known number of positive pixels,
+# plus the matching raw-probability stack. predict_slide returns the pair
+# (binary_stack, prob_stack), so the mock must return both.
 FAKE_PRED = np.zeros((23, 16, 16), dtype=np.uint8)
 FAKE_PRED[3, :8, :] = 1  # 50% positive on the PD-1 channel
+FAKE_PROB = np.zeros((23, 16, 16), dtype=np.float32)
 
 IN_MEMORY_CHANNELS = {
     "default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}
@@ -116,7 +119,8 @@ class RunBatchInferenceTaskTests(TransactionTestCase):
         batch.slides.set([slide])
 
         with patch("apps.inference.tasks.load_model", return_value=MagicMock()), \
-                patch("apps.inference.tasks.predict_slide", return_value=FAKE_PRED):
+                patch("apps.inference.tasks.predict_slide",
+                      return_value=(FAKE_PRED, FAKE_PROB)):
             run_batch_inference.delay(str(batch.id))
 
         slide.refresh_from_db()

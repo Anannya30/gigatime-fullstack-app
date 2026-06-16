@@ -70,3 +70,18 @@ class NotificationConsumer(AsyncJsonWebsocketConsumer):
                 "status": event.get("status"),
             }
         )
+
+    async def slide_progress(self, event):
+        """Forward a ``slide.progress`` group event (live tiles-processed updates
+        for an in-flight slide) to the connected client."""
+        await self.send_json(
+            {
+                "type": "slide.progress",
+                "slide_id": event.get("slide_id"),
+                "filename": event.get("filename"),
+                "tiles_done": event.get("tiles_done"),
+                "tiles_total": event.get("tiles_total"),
+                "tiles_run": event.get("tiles_run"),
+                "tiles_skipped": event.get("tiles_skipped"),
+            }
+        )
