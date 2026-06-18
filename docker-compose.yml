@@ -30,6 +30,9 @@ services:
 
   backend:
     build: ./backend
+    # Tag the built image so the celery service can reuse it instead of
+    # building (and exporting) the same multi-GB torch image a second time.
+    image: gigatime-backend:latest
     depends_on:
       db:
         condition: service_healthy
@@ -55,7 +58,9 @@ services:
              gunicorn gigatime_backend.asgi:application -w 4 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000"
 
   celery:
-    build: ./backend
+    # Reuse the image built by the backend service (identical Dockerfile);
+    # avoids a duplicate build that previously OOM-killed the Docker daemon.
+    image: gigatime-backend:latest
     depends_on:
       - backend
       - redis
