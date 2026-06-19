@@ -13,7 +13,7 @@ from rest_framework.views import APIView
 
 from apps.audit.utils import log_action
 
-from .models import Slide, SlideResult, SlideStatus
+from .models import STOPPABLE_STATUSES, Slide, SlideResult, SlideStatus
 from .serializers import (
     SlidePatchSerializer,
     SlideResultSerializer,
@@ -199,6 +199,42 @@ class SlideResultView(OwnerSlideMixin, APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
         return Response(SlideResultSerializer(result).data, status=status.HTTP_200_OK)
+
+
+class SlideStopView(OwnerSlideMixin, APIView):
+    """POST /api/slides/<pk>/stop/ — cancel an in-flight slide.
+
+    Sets the slide to CANCELLED immediately (so the UI updates at once and
+    orphaned RUNNING rows from a crashed worker can always be cleared) and
+    raises ``stop_requested`` so a worker that *is* actively streaming this
+    slide unwinds at its next progress checkpoint.
+    """
+
+    def post(self, request, pk):
+        slide = self.get_slide(request, pk)
+        if slide.status not in STOPPABLE_STATUSES:
+            return Response(
+                {"detail": f"Slide is not processing (status: {slide.status})."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        slide.stop_requested = True
+        slide.status = SlideStatus.CANCELLED
+        slide.completed_at = timezone.now()
+        slide.error_message = "Cancelled by user."
+        slide.save(update_fields=[
+            "stop_requested", "status", "completed_at", "error_message",
+        ])
+        log_action(
+            user=request.user,
+            action="slide.stop",
+            resource_type="Slide",
+            resource_id=slide.id,
+            request=request,
+            payload_snapshot={},
+            response_status=status.HTTP_200_OK,
+        )
+        return Response(SlideSerializer(slide).data, status=status.HTTP_200_OK)
 
 
 class SlideTiffDownloadView(OwnerSlideMixin, APIView):

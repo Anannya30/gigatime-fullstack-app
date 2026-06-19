@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ChevronDown, Download, FileText } from 'lucide-react'
+import { ChevronDown, Download, FileText, Trash2 } from 'lucide-react'
 import TileProgressBar from '../components/TileProgressBar'
 import StatusBadge from '../components/StatusBadge'
 import { getSlideResults, downloadTiff } from '../api/slidesApi'
 import { SLIDE_STATUS, PAGES } from '../utils/constants'
-import { cn, statusLabel } from '../utils/helpers'
+import { cn, isStoppable, statusLabel } from '../utils/helpers'
 
 const EYEBROW = 'text-[11px] font-semibold uppercase tracking-[0.12em] text-[#5A7B72] dark:text-brand-light'
 
@@ -73,7 +73,7 @@ function MarkerRow({ marker }) {
   )
 }
 
-export default function ResultsPage({ slide, onNavigate, onToast }) {
+export default function ResultsPage({ slide, onNavigate, onToast, onStop, onDelete }) {
   const [procOpen, setProcOpen] = useState(false)
   const [markerTable, setMarkerTable] = useState(null)
   const [resultsError, setResultsError] = useState(null)
@@ -144,6 +144,11 @@ export default function ResultsPage({ slide, onNavigate, onToast }) {
         <div className="mt-3 flex flex-wrap items-center gap-x-8 gap-y-1.5 text-sm text-[#928E82]">
           {metaParts.map((part, i) => <span key={i}>{part}</span>)}
           <StatusBadge status={slide.status} variant="dot" />
+          {onStop && isStoppable(slide.status) && (
+            <button type="button" onClick={() => onStop(slide)} className="inline-flex items-center gap-1.5 rounded-[5px] border border-red-500/40 px-3 py-1 text-xs font-semibold text-red-600 transition-colors hover:bg-red-500/5 dark:text-red-400">
+              Stop processing
+            </button>
+          )}
         </div>
       </div>
 
@@ -193,6 +198,12 @@ export default function ResultsPage({ slide, onNavigate, onToast }) {
           <FileText className="h-4 w-4" />
           Export PDF
         </button>
+        {onDelete && (
+          <button type="button" onClick={() => onDelete(slide)} className="inline-flex items-center gap-2 rounded-[5px] border border-gray-300 bg-transparent px-5 py-2.5 text-sm font-semibold text-gray-500 transition-colors hover:border-red-400 hover:text-red-600 dark:border-gray-600 dark:text-gray-400 dark:hover:border-red-500/60 dark:hover:text-red-400">
+            <Trash2 className="h-4 w-4" />
+            Delete slide
+          </button>
+        )}
       </div>
 
       {/* 4 — Footer disclaimer */}

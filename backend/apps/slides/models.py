@@ -10,6 +10,15 @@ class SlideStatus(models.TextChoices):
     RUNNING = "RUNNING", "Running"
     COMPLETED = "COMPLETED", "Completed"
     FAILED = "FAILED", "Failed"
+    CANCELLED = "CANCELLED", "Cancelled"
+
+
+# Statuses a slide can be stopped from -- i.e. still queued or in flight.
+STOPPABLE_STATUSES = (
+    SlideStatus.CREATED,
+    SlideStatus.QUEUED,
+    SlideStatus.RUNNING,
+)
 
 
 class ActiveSlideManager(models.Manager):
@@ -63,6 +72,13 @@ class Slide(models.Model):
     # (background-skipped tiles included, since they are still "processed").
     tiles_total = models.IntegerField(null=True, blank=True)
     tiles_done = models.IntegerField(default=0)
+
+    # Set when the user asks to stop an in-flight slide. The running inference
+    # task polls this at each progress checkpoint and aborts cooperatively,
+    # marking the slide CANCELLED. (The stop endpoint also sets CANCELLED
+    # immediately so orphaned RUNNING rows -- e.g. after a worker crash -- can
+    # always be cleared even when no worker is alive to observe the flag.)
+    stop_requested = models.BooleanField(default=False)
 
     # Soft delete bookkeeping.
     is_deleted = models.BooleanField(default=False)

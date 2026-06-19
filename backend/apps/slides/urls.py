@@ -5,6 +5,7 @@ from .views import (
     SlideItemView,
     SlideListView,
     SlideResultView,
+    SlideStopView,
     SlideTiffDownloadView,
     SlideUploadView,
 )
@@ -18,6 +19,7 @@ urlpatterns = [
     # GET (detail), PATCH (metadata), DELETE (soft delete) share this URL.
     path("<uuid:pk>/", SlideItemView.as_view(), name="slide-detail"),
     path("<uuid:pk>/results/", SlideResultView.as_view(), name="slide-results"),
+    path("<uuid:pk>/stop/", SlideStopView.as_view(), name="slide-stop"),
     path(
         "<uuid:pk>/download-tiff/",
         SlideTiffDownloadView.as_view(),

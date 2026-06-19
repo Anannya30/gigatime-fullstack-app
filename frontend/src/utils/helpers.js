@@ -1,4 +1,4 @@
-import { STATUS_META, STATUS_LABEL } from './constants'
+import { STATUS_META, STATUS_LABEL, STOPPABLE_STATUSES } from './constants'
 
 /** Conditional className joiner (clsx-lite). */
 export function cn(...parts) {
@@ -23,6 +23,11 @@ export function statusBadgeClasses(status) {
 
 export function isLiveStatus(status) {
   return Boolean(STATUS_META[status]?.pulse)
+}
+
+/** Whether a slide in this status can still be stopped (queued or in flight). */
+export function isStoppable(status) {
+  return STOPPABLE_STATUSES.includes(status)
 }
 
 /** Confidence tier from a per-channel validation correlation r. */

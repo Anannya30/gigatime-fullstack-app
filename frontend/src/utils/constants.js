@@ -54,9 +54,20 @@ export const SLIDE_STATUS = {
   RUNNING: 'Running',
   SUCCEEDED: 'Succeeded',
   FAILED: 'Failed',
+  CANCELLED: 'Cancelled',
   PREEMPTED: 'Preempted',
   REQUEUED: 'Requeued',
 }
+
+// Statuses a slide can still be stopped from (queued or in flight).
+export const STOPPABLE_STATUSES = [
+  SLIDE_STATUS.CREATED,
+  SLIDE_STATUS.UPLOADED,
+  SLIDE_STATUS.QUEUED,
+  SLIDE_STATUS.RUNNING,
+  SLIDE_STATUS.PREEMPTED,
+  SLIDE_STATUS.REQUEUED,
+]
 
 // Human-facing label per status (e.g. Succeeded → "Completed").
 export const STATUS_LABEL = {
@@ -71,6 +82,7 @@ export const STATUS_META = {
   [SLIDE_STATUS.RUNNING]: { tone: 'orange', pulse: true },
   [SLIDE_STATUS.SUCCEEDED]: { tone: 'green', pulse: false },
   [SLIDE_STATUS.FAILED]: { tone: 'red', pulse: false },
+  [SLIDE_STATUS.CANCELLED]: { tone: 'gray', pulse: false },
   [SLIDE_STATUS.PREEMPTED]: { tone: 'orange', pulse: true },
   [SLIDE_STATUS.REQUEUED]: { tone: 'orange', pulse: true },
 }

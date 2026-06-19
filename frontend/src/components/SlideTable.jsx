@@ -1,12 +1,12 @@
 import { useState } from 'react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import StatusBadge from './StatusBadge'
-import { formatDate, paginate, pageCount } from '../utils/helpers'
+import { formatDate, isStoppable, paginate, pageCount } from '../utils/helpers'
 
 const COLUMNS = ['Filename', 'Cancer Type', 'Status', 'Submitted', '']
 
 /** Recent slides table (Filename · Cancer · Status · Submitted · View). */
-export default function SlideTable({ slides, loading = false, pageSize = 5, onView }) {
+export default function SlideTable({ slides, loading = false, pageSize = 5, onView, onStop, onDelete }) {
   const [page, setPage] = useState(1)
   const pages = pageCount(slides.length, pageSize)
   const safePage = Math.min(page, pages)
@@ -45,7 +45,15 @@ export default function SlideTable({ slides, loading = false, pageSize = 5, onVi
                   <td className="px-4 py-4"><StatusBadge status={slide.status} variant="dot" /></td>
                   <td className="whitespace-nowrap px-4 py-4 text-gray-500 dark:text-gray-400">{formatDate(slide.submittedAt)}</td>
                   <td className="px-4 py-4 text-right">
-                    <button type="button" onClick={() => onView?.(slide)} className="text-sm font-semibold text-brand hover:text-brand-dark">View →</button>
+                    <div className="inline-flex items-center gap-4">
+                      {onStop && isStoppable(slide.status) && (
+                        <button type="button" onClick={() => onStop(slide)} className="text-sm font-semibold text-red-600 hover:text-red-700 dark:text-red-400">Stop</button>
+                      )}
+                      {onDelete && (
+                        <button type="button" onClick={() => onDelete(slide)} className="text-sm font-semibold text-gray-400 transition-colors hover:text-red-600 dark:text-gray-500 dark:hover:text-red-400">Delete</button>
+                      )}
+                      <button type="button" onClick={() => onView?.(slide)} className="text-sm font-semibold text-brand hover:text-brand-dark">View →</button>
+                    </div>
                   </td>
                 </tr>
               ))

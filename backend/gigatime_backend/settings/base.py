@@ -149,6 +149,10 @@ DATABASES = {
         "PASSWORD": env("DB_PASSWORD", ""),
         "HOST": env("DB_HOST", "localhost"),
         "PORT": env("DB_PORT", "5432"),
+        # Verify a reused connection is still alive before issuing a query, so a
+        # connection dropped during a long-running Celery inference is replaced
+        # transparently instead of raising "connection already closed".
+        "CONN_HEALTH_CHECKS": True,
     }
 }
 

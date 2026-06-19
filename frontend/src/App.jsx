@@ -33,7 +33,7 @@ function toNavUser(user) {
 
 export default function App() {
   const { isDark, toggleTheme } = useTheme()
-  const { slides, loading, refetch, getSlideById, updateSlideMeta, createSlide, applyProgress } = useSlides()
+  const { slides, loading, error, refetch, getSlideById, updateSlideMeta, createSlide, stopSlide, deleteSlide, applyProgress } = useSlides()
   const { user, loading: authLoading, otpRequired, login, loginWithEmail, submitOtp, register, forgotPassword, verifyForgotOtp, resetPassword, logout } = useAuth()
 
   const authed = !!user
@@ -97,6 +97,25 @@ export default function App() {
     setPage(PAGES.RESULTS)
     setMobileOpen(false)
   }
+  async function handleStopSlide(slide) {
+    const id = typeof slide === 'string' ? slide : slide.id
+    const name = typeof slide === 'string' ? 'this slide' : slide.filename || 'this slide'
+    if (!window.confirm(`Stop processing "${name}"? Inference will be cancelled and cannot be resumed.`)) return
+    const res = await stopSlide(id)
+    setToast(res ? 'Processing stopped' : 'Could not stop slide')
+  }
+  async function handleDeleteSlide(slide) {
+    const id = typeof slide === 'string' ? slide : slide.id
+    const name = typeof slide === 'string' ? 'this slide' : slide.filename || 'this slide'
+    if (!window.confirm(`Remove "${name}" from your slides? Its file and results stay on the server — it just won't be listed.`)) return
+    const ok = await deleteSlide(id)
+    setToast(ok ? 'Slide removed' : 'Could not remove slide')
+    // If the slide currently open in Results was removed, leave that view.
+    if (ok && activeSlideId === id) {
+      setActiveSlideId(null)
+      setPage(PAGES.HISTORY)
+    }
+  }
   function compareSelected(ids) {
     setComparisonSelection(ids)
     setPage(PAGES.COMPARISON)
@@ -134,15 +153,15 @@ export default function App() {
   function renderPage() {
     switch (page) {
       case PAGES.DASHBOARD:
-        return <DashboardPage slides={slides} loading={loading} onNavigate={navigate} onViewSlide={viewSlide} />
+        return <DashboardPage slides={slides} loading={loading} error={error} onRetry={refetch} onNavigate={navigate} onViewSlide={viewSlide} onStopSlide={handleStopSlide} onDeleteSlide={handleDeleteSlide} />
       case PAGES.UPLOAD:
         return <UploadPage createSlide={createSlide} onNavigate={navigate} onSlideCreated={(slide) => { setToast('Slide uploaded — analysis started'); viewSlide(slide) }} />
       case PAGES.RESULTS:
-        return <ResultsPage slide={activeSlide} onNavigate={navigate} onUpdateMeta={updateSlideMeta} onToast={setToast} />
+        return <ResultsPage slide={activeSlide} onNavigate={navigate} onUpdateMeta={updateSlideMeta} onToast={setToast} onStop={handleStopSlide} onDelete={handleDeleteSlide} />
       case PAGES.COMPARISON:
         return <ComparisonPage slides={slides} initialSelection={comparisonSelection} onToast={setToast} />
       case PAGES.HISTORY:
-        return <HistoryPage slides={slides} loading={loading} onView={viewSlide} onCompareSelected={compareSelected} />
+        return <HistoryPage slides={slides} loading={loading} onView={viewSlide} onCompareSelected={compareSelected} onStopSlide={handleStopSlide} onDeleteSlide={handleDeleteSlide} />
       case PAGES.SETTINGS:
         return <SettingsPage isDark={isDark} onToggleTheme={toggleTheme} onNavigate={navigate} />
       case PAGES.NOTICE:

@@ -4,12 +4,12 @@ import StatusBadge from '../components/StatusBadge'
 import TileProgressBar from '../components/TileProgressBar'
 import { getSlideResults } from '../api/slidesApi'
 import { CANCER_TYPES, SLIDE_STATUS } from '../utils/constants'
-import { cn, formatDateTime, formatDuration, paginate, pageCount, scoreColor } from '../utils/helpers'
+import { cn, formatDateTime, formatDuration, isStoppable, paginate, pageCount, scoreColor } from '../utils/helpers'
 
 const PAGE_SIZE = 10
 const EMPTY = { status: 'All', cancerType: 'All', filename: '', tag: '', dateFrom: '' }
 
-export default function HistoryPage({ slides, loading, onView, onCompareSelected }) {
+export default function HistoryPage({ slides, loading, onView, onCompareSelected, onStopSlide, onDeleteSlide }) {
   const [filters, setFilters] = useState(EMPTY)
   const [sort, setSort] = useState({ key: 'submittedAt', dir: 'desc' })
   const [selected, setSelected] = useState([])
@@ -138,7 +138,7 @@ export default function HistoryPage({ slides, loading, onView, onCompareSelected
                 <tr><td colSpan={7} className="px-4 py-12 text-center text-gray-400">No slides match these filters.</td></tr>
               ) : (
                 rows.map((slide) => (
-                  <Row key={slide.id} slide={slide} selected={selected.includes(slide.id)} expanded={expanded === slide.id} onToggleSelect={() => toggleSelect(slide.id)} onToggleExpand={() => setExpanded((e) => (e === slide.id ? null : slide.id))} onView={() => onView(slide)} />
+                  <Row key={slide.id} slide={slide} selected={selected.includes(slide.id)} expanded={expanded === slide.id} onToggleSelect={() => toggleSelect(slide.id)} onToggleExpand={() => setExpanded((e) => (e === slide.id ? null : slide.id))} onView={() => onView(slide)} onStop={onStopSlide ? () => onStopSlide(slide) : null} onDelete={onDeleteSlide ? () => onDeleteSlide(slide) : null} />
                 ))
               )}
             </tbody>
@@ -159,7 +159,7 @@ export default function HistoryPage({ slides, loading, onView, onCompareSelected
   )
 }
 
-function Row({ slide, selected, expanded, onToggleSelect, onToggleExpand, onView }) {
+function Row({ slide, selected, expanded, onToggleSelect, onToggleExpand, onView, onStop, onDelete }) {
   const selectable = slide.status === SLIDE_STATUS.SUCCEEDED
   const [top3, setTop3] = useState([])
 
@@ -197,7 +197,17 @@ function Row({ slide, selected, expanded, onToggleSelect, onToggleExpand, onView
           )}
         </td>
         <td className="px-4 py-3.5 text-gray-500 dark:text-gray-400">{slide.cancerType}</td>
-        <td className="px-4 py-3.5"><StatusBadge status={slide.status} /></td>
+        <td className="px-4 py-3.5">
+          <div className="flex items-center gap-3">
+            <StatusBadge status={slide.status} />
+            {onStop && isStoppable(slide.status) && (
+              <button type="button" onClick={onStop} className="text-xs font-semibold text-red-600 hover:text-red-700 dark:text-red-400">Stop</button>
+            )}
+            {onDelete && (
+              <button type="button" onClick={onDelete} className="text-xs font-semibold text-gray-400 transition-colors hover:text-red-600 dark:text-gray-500 dark:hover:text-red-400">Delete</button>
+            )}
+          </div>
+        </td>
         <td className="whitespace-nowrap px-4 py-3.5 text-gray-500 dark:text-gray-400">{formatDateTime(slide.submittedAt)}</td>
         <td className="whitespace-nowrap px-4 py-3.5 text-gray-500 dark:text-gray-400">{formatDuration(slide.duration)}</td>
       </tr>

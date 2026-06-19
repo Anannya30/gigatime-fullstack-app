@@ -1,15 +1,21 @@
 /**
  * Data layer — the ONLY place that talks to the Django REST backend for slides.
  *
- * Every request carries `Authorization: Bearer <token>`, where the JWT access
- * token is read from localStorage under `gigatime_access_token`. Non-2xx
- * responses are turned into thrown Errors carrying Django's error message.
+ * Every authenticated request goes through `authFetch`, which attaches
+ * `Authorization: Bearer <token>` (access JWT from localStorage under
+ * `gigatime_access_token`) and, on a 401, transparently refreshes the token
+ * once and retries — so an expired access token self-heals instead of silently
+ * emptying the UI. Non-2xx responses are turned into thrown Errors carrying
+ * Django's error message.
  */
 
 // Base URL is read from env so the same code works in dev / staging / prod.
 export const API_BASE = import.meta.env.VITE_API_BASE || '/api'
 
 export const ACCESS_TOKEN_KEY = 'gigatime_access_token'
+// Kept local (not imported from authApi) to avoid a circular import — authApi
+// already depends on this module.
+const REFRESH_TOKEN_KEY = 'gigatime_refresh_token'
 
 /** Authorization header (+ any extra headers) for an authenticated request. */
 export function getAuthHeaders(extra = {}) {
@@ -17,6 +23,52 @@ export function getAuthHeaders(extra = {}) {
   const headers = { ...extra }
   if (token) headers.Authorization = `Bearer ${token}`
   return headers
+}
+
+// Single-flight refresh: concurrent 401s collapse into one /auth/refresh/ call.
+let refreshInFlight = null
+
+async function refreshAccessToken() {
+  const refresh = localStorage.getItem(REFRESH_TOKEN_KEY)
+  if (!refresh) return null
+  if (!refreshInFlight) {
+    refreshInFlight = fetch(`${API_BASE}/auth/refresh/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh }),
+    })
+      .then(async (r) => {
+        if (!r.ok) return null
+        const data = await r.json().catch(() => null)
+        if (data?.access) {
+          localStorage.setItem(ACCESS_TOKEN_KEY, data.access)
+          return data.access
+        }
+        return null
+      })
+      .catch(() => null)
+      .finally(() => {
+        refreshInFlight = null
+      })
+  }
+  return refreshInFlight
+}
+
+/**
+ * Authenticated fetch against the API. Prepends API_BASE, attaches the bearer
+ * token, and on a 401 refreshes the access token once and retries the request.
+ */
+export async function authFetch(path, opts = {}, _retried = false) {
+  const { headers, ...rest } = opts
+  const res = await fetch(`${API_BASE}${path}`, {
+    ...rest,
+    headers: getAuthHeaders(headers || {}),
+  })
+  if (res.status === 401 && !_retried) {
+    const fresh = await refreshAccessToken()
+    if (fresh) return authFetch(path, opts, true)
+  }
+  return res
 }
 
 /** Resolve a fetch Response, throwing the Django error message on non-2xx. */
@@ -52,62 +104,55 @@ export async function handleResponse(res) {
 
 /** GET /api/slides/ */
 export async function listSlides() {
-  const res = await fetch(`${API_BASE}/slides/`, { headers: getAuthHeaders() })
-  return handleResponse(res)
+  return handleResponse(await authFetch('/slides/'))
 }
 
 /** GET /api/slides/<id>/ */
 export async function getSlide(id) {
-  const res = await fetch(`${API_BASE}/slides/${id}/`, { headers: getAuthHeaders() })
-  return handleResponse(res)
+  return handleResponse(await authFetch(`/slides/${id}/`))
 }
 
 /** POST /api/slides/upload/ — multipart form data (file + metadata). */
 export async function uploadSlide(formData) {
   // Note: do NOT set Content-Type — the browser sets the multipart boundary.
-  const res = await fetch(`${API_BASE}/slides/upload/`, {
-    method: 'POST',
-    headers: getAuthHeaders(),
-    body: formData,
-  })
-  return handleResponse(res)
+  return handleResponse(
+    await authFetch('/slides/upload/', { method: 'POST', body: formData })
+  )
 }
 
 /** POST /api/slides/batch/ — multipart form data (multiple files + metadata). */
 export async function uploadSlideBatch(formData) {
-  const res = await fetch(`${API_BASE}/slides/batch/`, {
-    method: 'POST',
-    headers: getAuthHeaders(),
-    body: formData,
-  })
-  return handleResponse(res)
+  return handleResponse(
+    await authFetch('/slides/batch/', { method: 'POST', body: formData })
+  )
 }
 
 /** PATCH /api/slides/<id>/ — partial metadata update. */
 export async function updateSlide(id, patch) {
-  const res = await fetch(`${API_BASE}/slides/${id}/`, {
-    method: 'PATCH',
-    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify(patch),
-  })
-  return handleResponse(res)
+  return handleResponse(
+    await authFetch(`/slides/${id}/`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch),
+    })
+  )
 }
 
 /** DELETE /api/slides/<id>/ — soft delete. */
 export async function deleteSlide(id) {
-  const res = await fetch(`${API_BASE}/slides/${id}/`, {
-    method: 'DELETE',
-    headers: getAuthHeaders(),
-  })
-  return handleResponse(res)
+  return handleResponse(await authFetch(`/slides/${id}/`, { method: 'DELETE' }))
+}
+
+/** POST /api/slides/<id>/stop/ — cancel an in-flight (queued/running) slide. */
+export async function stopSlide(id) {
+  return handleResponse(
+    await authFetch(`/slides/${id}/stop/`, { method: 'POST' })
+  )
 }
 
 /** GET /api/slides/<id>/results/ — marker table once inference is done. */
 export async function getSlideResults(id) {
-  const res = await fetch(`${API_BASE}/slides/${id}/results/`, {
-    headers: getAuthHeaders(),
-  })
-  return handleResponse(res)
+  return handleResponse(await authFetch(`/slides/${id}/results/`))
 }
 
 /**
@@ -115,9 +160,7 @@ export async function getSlideResults(id) {
  * trigger a browser download via a temporary anchor element.
  */
 export async function downloadTiff(id) {
-  const res = await fetch(`${API_BASE}/slides/${id}/download-tiff/`, {
-    headers: getAuthHeaders(),
-  })
+  const res = await authFetch(`/slides/${id}/download-tiff/`)
   if (!res.ok) {
     // Reuse the JSON error handling for non-2xx (e.g. 404 not ready yet).
     return handleResponse(res)
@@ -141,18 +184,16 @@ export async function downloadTiff(id) {
 
 /** POST /api/inference/batch/ — queue a batch inference run for slide ids. */
 export async function submitBatchInference(slideIds) {
-  const res = await fetch(`${API_BASE}/inference/batch/`, {
-    method: 'POST',
-    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ slides: slideIds }),
-  })
-  return handleResponse(res)
+  return handleResponse(
+    await authFetch('/inference/batch/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slides: slideIds }),
+    })
+  )
 }
 
 /** GET /api/inference/batch/<id>/ — batch + per-slide status. */
 export async function getBatchStatus(batchId) {
-  const res = await fetch(`${API_BASE}/inference/batch/${batchId}/`, {
-    headers: getAuthHeaders(),
-  })
-  return handleResponse(res)
+  return handleResponse(await authFetch(`/inference/batch/${batchId}/`))
 }

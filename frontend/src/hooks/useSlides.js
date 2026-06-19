@@ -5,18 +5,26 @@ import {
   updateSlide,
   uploadSlide,
   submitBatchInference,
+  stopSlide as apiStopSlide,
+  deleteSlide as apiDeleteSlide,
 } from '../api/slidesApi'
 import { SLIDE_STATUS } from '../utils/constants'
 
-// Backend status (CREATED/QUEUED/RUNNING/COMPLETED/FAILED) → frontend label so
-// the existing components (StatusBadge, filters, comparisons) keep working.
+// Backend status (CREATED/QUEUED/RUNNING/COMPLETED/FAILED/CANCELLED) → frontend
+// label so the existing components (StatusBadge, filters, comparisons) keep
+// working.
 const STATUS_MAP = {
   CREATED: SLIDE_STATUS.CREATED,
   QUEUED: SLIDE_STATUS.QUEUED,
   RUNNING: SLIDE_STATUS.RUNNING,
   COMPLETED: SLIDE_STATUS.SUCCEEDED,
   FAILED: SLIDE_STATUS.FAILED,
+  CANCELLED: SLIDE_STATUS.CANCELLED,
 }
+
+// How many times the initial load retries a failed fetch before surfacing an
+// error — covers the backend still booting right after `docker compose up`.
+const INITIAL_LOAD_RETRIES = 3
 
 // Statuses still in flight on the backend — poll these.
 const ACTIVE_BACKEND = new Set(['CREATED', 'QUEUED', 'RUNNING'])
@@ -95,26 +103,47 @@ export function useSlides() {
     }
   }, [])
 
+  // Initial load with bounded retry+backoff: a single failed fetch on mount
+  // (e.g. the backend still booting after a restart) used to leave the list
+  // permanently empty. Retry a few times before surfacing an error so it
+  // self-heals instead of showing a misleading "No slides yet".
   useEffect(() => {
     let active = true
     ;(async () => {
       setLoading(true)
-      try {
-        const data = await listSlides()
-        if (!active) return
-        const normalized = (Array.isArray(data) ? data : []).map(normalizeSlide)
-        setSlides(normalized)
-        slidesRef.current = normalized
-      } catch (e) {
-        if (active) setError(e.message || 'Failed to load slides')
-      } finally {
-        if (active) setLoading(false)
+      for (let attempt = 0; active; attempt++) {
+        try {
+          const data = await listSlides()
+          if (!active) return
+          const normalized = (Array.isArray(data) ? data : []).map(normalizeSlide)
+          setSlides(normalized)
+          slidesRef.current = normalized
+          setError(null)
+          break
+        } catch (e) {
+          if (attempt >= INITIAL_LOAD_RETRIES) {
+            if (active) setError(e.message || 'Failed to load slides')
+            break
+          }
+          // 0.5s, 1s, 2s backoff.
+          await new Promise((r) => setTimeout(r, 500 * 2 ** attempt))
+        }
       }
+      if (active) setLoading(false)
     })()
     return () => {
       active = false
     }
   }, [])
+
+  // Re-pull the list when the tab regains focus, so a stale view (e.g. after a
+  // backend restart or sleep) reconciles without a manual reload. refetch keeps
+  // the existing slides on a transient failure, so this never blanks the UI.
+  useEffect(() => {
+    const onFocus = () => refetch()
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
+  }, [refetch])
 
   // Poll in-flight slides every 5s; when one reaches a terminal state, refetch.
   useEffect(() => {
@@ -197,6 +226,42 @@ export function useSlides() {
     }
   }, [])
 
+  // Request cancellation of an in-flight slide. The backend flips it to
+  // CANCELLED immediately (and signals any running worker to abort), so we
+  // swap the returned row straight into state.
+  const stopSlide = useCallback(async (id) => {
+    try {
+      const updated = normalizeSlide(await apiStopSlide(id))
+      setSlides((prev) => {
+        const next = prev.map((s) => (s.id === id ? updated : s))
+        slidesRef.current = next
+        return next
+      })
+      return updated
+    } catch (e) {
+      setError(e.message || 'Failed to stop slide')
+      return null
+    }
+  }, [])
+
+  // Soft-delete: the backend keeps the row, source file and results and only
+  // sets is_deleted=True, so the slide just stops appearing in the list. We
+  // drop it from local state so it disappears without a refetch.
+  const deleteSlide = useCallback(async (id) => {
+    try {
+      await apiDeleteSlide(id)
+      setSlides((prev) => {
+        const next = prev.filter((s) => s.id !== id)
+        slidesRef.current = next
+        return next
+      })
+      return true
+    } catch (e) {
+      setError(e.message || 'Failed to remove slide')
+      return false
+    }
+  }, [])
+
   const createSlide = useCallback(async (formData) => {
     const created = normalizeSlide(await uploadSlide(formData))
     setSlides((prev) => {
@@ -221,6 +286,8 @@ export function useSlides() {
     getSlideById,
     updateSlideMeta,
     createSlide,
+    stopSlide,
+    deleteSlide,
     applyProgress,
   }
 }

@@ -7,6 +7,7 @@ from asgiref.sync import async_to_sync
 from celery import shared_task
 from channels.layers import get_channel_layer
 from django.conf import settings
+from django.db import InterfaceError, OperationalError, close_old_connections
 from django.utils import timezone
 
 from apps.slides.models import SlideResult, SlideStatus
@@ -38,6 +39,53 @@ WSI_EXTENSIONS = {".tif", ".tiff", ".svs", ".ndpi", ".scn", ".mrxs", ".vms",
 
 # How often (in tiles) the WSI path persists progress + pushes a ws event.
 PROGRESS_EVERY_TILES = 500
+
+
+class SlideCancelled(Exception):
+    """Raised inside the WSI progress callback when the user requested a stop,
+    so the streaming inference unwinds and the slide is marked CANCELLED rather
+    than FAILED. Carries no payload -- the task handles the bookkeeping."""
+
+
+def _save_fields(obj, **fields):
+    """Persist ``fields`` on a model instance from inside a long-running task,
+    reconnecting if the DB connection was dropped mid-run.
+
+    A multi-hour inference holds one Postgres connection across thousands of
+    writes; if the server or network drops it, every later ``save()`` raises
+    ``InterfaceError: connection already closed`` -- including the error
+    handler's own status write, which is why a crashed run gets stuck at
+    RUNNING. ``close_old_connections()`` drops the dead/obsolete connection
+    (Django reopens a fresh one on next use); retrying once makes the critical
+    status writes survive a dropped connection.
+    """
+    for key, value in fields.items():
+        setattr(obj, key, value)
+    update_fields = list(fields.keys())
+    for attempt in (1, 2):
+        try:
+            close_old_connections()
+            obj.save(update_fields=update_fields)
+            return
+        except (InterfaceError, OperationalError):
+            close_old_connections()
+            if attempt == 2:
+                raise
+
+
+def _stop_requested(slide):
+    """Re-read the slide's stop flag, tolerating a dropped connection. Returns
+    False (keep going) if the read fails transiently, so a connection blip never
+    aborts an otherwise-healthy run."""
+    for attempt in (1, 2):
+        try:
+            close_old_connections()
+            slide.refresh_from_db(fields=["stop_requested"])
+            return slide.stop_requested
+        except (InterfaceError, OperationalError):
+            close_old_connections()
+            if attempt == 2:
+                return False
 
 
 def _build_marker_table(binary_stack, prob_stack):
@@ -135,12 +183,19 @@ def _run_wsi_slide(slide, model, device, owner_id):
     tiff_path = src.parent / (src.stem + "_pred.ome.tiff")
 
     def progress_cb(done, total, n_run, n_skip):
+        # Cooperative cancellation checkpoint: if the user asked to stop this
+        # slide while it was streaming, abort now so the task can mark it
+        # CANCELLED. This is checked *before* the best-effort progress write so
+        # the swallow below can never hide the cancellation.
+        if _stop_requested(slide):
+            raise SlideCancelled()
+
         # A progress write must never abort a multi-hour inference; swallow any
         # transient DB / channel-layer error and let the next tick catch up.
+        # _save_fields reconnects if the long-lived connection was dropped, so a
+        # blip here doesn't poison every later write.
         try:
-            slide.tiles_done = done
-            slide.tiles_total = total
-            slide.save(update_fields=["tiles_done", "tiles_total"])
+            _save_fields(slide, tiles_done=done, tiles_total=total)
             _notify_progress(owner_id, slide, done, total, n_run, n_skip)
         except Exception:  # noqa: BLE001 — progress is best-effort
             pass
@@ -151,9 +206,8 @@ def _run_wsi_slide(slide, model, device, owner_id):
 
     # Persist the MPP actually used during inference (and whether it came from
     # slide metadata or the assumed 40x default) onto the Slide record.
-    slide.mpp_value = results["native_mpp"]
-    slide.mpp_source = results["mpp_source"]
-    slide.save(update_fields=["mpp_value", "mpp_source"])
+    _save_fields(slide, mpp_value=results["native_mpp"],
+                 mpp_source=results["mpp_source"])
 
     return _wsi_marker_table(results), tiff_path
 
@@ -164,21 +218,24 @@ def run_batch_inference(batch_job_id):
     import torch
 
     batch_job = BatchJob.objects.get(id=batch_job_id)
-    batch_job.status = BatchJobStatus.RUNNING
-    batch_job.save(update_fields=["status"])
+    _save_fields(batch_job, status=BatchJobStatus.RUNNING)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = load_model(device)
 
     failed = False
     for slide in batch_job.slides.all():
+        # Honor a stop requested before this slide ever started running (e.g.
+        # the user cancelled a queued slide while an earlier one was streaming).
+        if _stop_requested(slide) or slide.status == SlideStatus.CANCELLED:
+            _save_fields(slide, status=SlideStatus.CANCELLED,
+                         stop_requested=False, completed_at=timezone.now())
+            _notify(batch_job.owner_id, slide, SlideStatus.CANCELLED)
+            continue
         try:
-            slide.status = SlideStatus.RUNNING
-            slide.started_at = timezone.now()
-            slide.tiles_done = 0
-            slide.tiles_total = None
-            slide.save(update_fields=["status", "started_at",
-                                      "tiles_done", "tiles_total"])
+            _save_fields(slide, status=SlideStatus.RUNNING,
+                         started_at=timezone.now(), tiles_done=0,
+                         tiles_total=None)
 
             ext = Path(slide.file_path).suffix.lower()
             if ext in WSI_EXTENSIONS:
@@ -201,33 +258,37 @@ def run_batch_inference(batch_job_id):
                 write_ome_tiff(tiff_path, binary_stack)
 
             # update_or_create so re-running a slide replaces its result instead
-            # of raising on the OneToOne unique constraint.
+            # of raising on the OneToOne unique constraint. Reconnect first in
+            # case the long inference outlived the original DB connection.
+            close_old_connections()
             SlideResult.objects.update_or_create(
                 slide=slide, defaults={"marker_table": marker_table})
 
-            slide.status = SlideStatus.COMPLETED
-            slide.completed_at = timezone.now()
-            slide.save(update_fields=["status", "completed_at"])
+            _save_fields(slide, status=SlideStatus.COMPLETED,
+                         completed_at=timezone.now())
 
             _notify(batch_job.owner_id, slide, SlideStatus.COMPLETED)
+        except SlideCancelled:
+            # User-requested stop -- mark CANCELLED (not FAILED) and leave the
+            # rest of the batch running.
+            _save_fields(slide, status=SlideStatus.CANCELLED,
+                         stop_requested=False, completed_at=timezone.now(),
+                         error_message="Cancelled by user.")
+            _notify(batch_job.owner_id, slide, SlideStatus.CANCELLED)
         except Exception as exc:  # noqa: BLE001 — surface any failure on the job
             failed = True
-            slide.status = SlideStatus.FAILED
-            slide.error_message = str(exc)
-            slide.save(update_fields=["status", "error_message"])
-
-            batch_job.status = BatchJobStatus.FAILED
-            batch_job.error_message = str(exc)
-            batch_job.completed_at = timezone.now()
-            batch_job.save(
-                update_fields=["status", "error_message", "completed_at"]
-            )
+            # _save_fields reconnects, so the FAILED status is recorded even when
+            # the failure was itself a dropped DB connection -- the slide no
+            # longer gets stuck at RUNNING.
+            _save_fields(slide, status=SlideStatus.FAILED,
+                         error_message=str(exc))
+            _save_fields(batch_job, status=BatchJobStatus.FAILED,
+                         error_message=str(exc), completed_at=timezone.now())
 
             _notify(batch_job.owner_id, slide, SlideStatus.FAILED)
 
     if not failed:
-        batch_job.status = BatchJobStatus.COMPLETED
-        batch_job.completed_at = timezone.now()
-        batch_job.save(update_fields=["status", "completed_at"])
+        _save_fields(batch_job, status=BatchJobStatus.COMPLETED,
+                     completed_at=timezone.now())
 
     return str(batch_job.id)
