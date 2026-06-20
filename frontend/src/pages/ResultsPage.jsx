@@ -49,6 +49,52 @@ function confidenceTier(score) {
   return 'LOW'
 }
 
+/** Strip a file extension for use as a download stem (slide1.svs → slide1). */
+function stripExt(name) {
+  return (name || 'slide').replace(/\.[^.]+$/, '')
+}
+
+/**
+ * Build a plain-text marker-positivity report: a header with the slide name +
+ * status, then a fixed-width table of every marker and its positive-pixel %
+ * (with cell type and confidence tier), ordered to match the on-screen layout.
+ */
+function buildMarkerReport(slide, markers) {
+  const ordered = [...markers].sort(
+    (a, b) => MARKER_ORDER.indexOf(a.marker) - MARKER_ORDER.indexOf(b.marker)
+  )
+  const COLS = [
+    { head: 'Marker', width: 12, get: (m) => m.marker },
+    { head: 'Cell Type', width: 26, get: (m) => m.label || '—' },
+    { head: 'Positive %', width: 12, get: (m) => (m.positive_pixel_pct == null ? 'N/A' : `${m.positive_pixel_pct.toFixed(2)}%`) },
+    {
+      head: 'Confidence',
+      width: 18,
+      get: (m) =>
+        `${confidenceTier(m.confidence_score)} (R${m.confidence_score != null ? m.confidence_score.toFixed(2) : '—'})`,
+    },
+  ]
+  const row = (cells) => cells.map((c, i) => String(c).padEnd(COLS[i].width)).join('  ').trimEnd()
+  const sep = COLS.map((c) => '-'.repeat(c.width)).join('  ')
+
+  const lines = [
+    'GigaTIME — Marker Positivity Report',
+    'RESEARCH USE ONLY — NOT FOR CLINICAL DIAGNOSIS',
+    '',
+    `Slide:     ${slide.filename}`,
+    `Status:    ${statusLabel(slide.status)}`,
+    `Markers:   ${ordered.length}`,
+    '',
+    row(COLS.map((c) => c.head)),
+    sep,
+    ...ordered.map((m) => row(COLS.map((c) => c.get(m)))),
+    '',
+    'Positive % = share of tissue pixels predicted positive for the marker.',
+    'Confidence R = mean sigmoid probability over positive pixels per channel.',
+  ]
+  return lines.join('\n')
+}
+
 /** One predicted protein channel — the hero row. Percentage value is dominant. */
 function MarkerRow({ marker }) {
   const tier = confidenceTier(marker.confidence_score)
@@ -120,7 +166,24 @@ export default function ResultsPage({ slide, onNavigate, onToast, onStop, onDele
 
   const isRunning = slide.status === SLIDE_STATUS.RUNNING
   const isDone = slide.status === SLIDE_STATUS.SUCCEEDED
-  const mockDownload = (what) => onToast?.(`${what} — download started (mock)`)
+  // Export the marker table as an auto-downloaded plain-text report.
+  const handleExport = () => {
+    if (!markers.length) {
+      onToast?.('Marker results are not ready yet')
+      return
+    }
+    const text = buildMarkerReport(slide, markers)
+    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${stripExt(slide.filename)}_markers.txt`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+    onToast?.('Marker report — download started')
+  }
   const handleDownloadTiff = async () => {
     try {
       await downloadTiff(slide.id)
@@ -188,15 +251,33 @@ export default function ResultsPage({ slide, onNavigate, onToast, onStop, onDele
         )}
       </div>
 
-      {/* 3 — Actions */}
+      {/* 3 — Actions. Download + Export stay disabled until inference completes. */}
       <div className="flex flex-wrap items-center gap-3">
-        <button type="button" onClick={handleDownloadTiff} className="inline-flex items-center gap-2 rounded-[5px] bg-[#3E6B5C] px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#33594d]">
+        <button
+          type="button"
+          onClick={handleDownloadTiff}
+          disabled={!isDone}
+          title={isDone ? undefined : 'Available once processing completes'}
+          className={cn(
+            'inline-flex items-center gap-2 rounded-[5px] bg-[#3E6B5C] px-5 py-2.5 text-sm font-semibold text-white transition-colors',
+            isDone ? 'hover:bg-[#33594d]' : 'cursor-not-allowed opacity-50'
+          )}
+        >
           <Download className="h-4 w-4" />
           Download OME-TIFF
         </button>
-        <button type="button" onClick={() => mockDownload('PDF')} className="inline-flex items-center gap-2 rounded-[5px] border border-[#4E6659] bg-transparent px-5 py-2.5 text-sm font-semibold text-[#4E6659] transition-colors hover:bg-[#4E6659]/5 dark:text-brand-light dark:hover:bg-brand/10">
+        <button
+          type="button"
+          onClick={handleExport}
+          disabled={!isDone}
+          title={isDone ? undefined : 'Available once processing completes'}
+          className={cn(
+            'inline-flex items-center gap-2 rounded-[5px] border border-[#4E6659] bg-transparent px-5 py-2.5 text-sm font-semibold text-[#4E6659] transition-colors dark:text-brand-light',
+            isDone ? 'hover:bg-[#4E6659]/5 dark:hover:bg-brand/10' : 'cursor-not-allowed opacity-50'
+          )}
+        >
           <FileText className="h-4 w-4" />
-          Export PDF
+          Export report
         </button>
         {onDelete && (
           <button type="button" onClick={() => onDelete(slide)} className="inline-flex items-center gap-2 rounded-[5px] border border-gray-300 bg-transparent px-5 py-2.5 text-sm font-semibold text-gray-500 transition-colors hover:border-red-400 hover:text-red-600 dark:border-gray-600 dark:text-gray-400 dark:hover:border-red-500/60 dark:hover:text-red-400">
