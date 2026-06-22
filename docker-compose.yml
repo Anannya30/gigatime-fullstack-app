@@ -82,11 +82,17 @@ services:
       PYTHONPATH: /app/ml/scripts
       NVIDIA_VISIBLE_DEVICES: all
       NVIDIA_DRIVER_CAPABILITIES: compute,utility
+      # Redirect the multi-GB WSI scratch memmap off the C:-backed ext4 .vhdx
+      # onto the /scratch bind mount below (D: drive, more free space).
+      GIGATIME_SCRATCH_DIR: /scratch
     volumes:
       - ./ml/data:/app/ml/data
       - ./ml/scripts:/app/ml/scripts
       - ./ml/environment.yml:/app/ml/environment.yml
       - ~/.cache/huggingface:/root/.cache/huggingface
+      # Host D: drive (~103 GB free) backs the scratch memmap; keeps the giant
+      # transient off the chronically-full C: drive that hosts the WSL .vhdx.
+      - /mnt/d/gigatime-scratch:/scratch
     command: celery -A gigatime_backend worker --loglevel=info
 
   frontend:

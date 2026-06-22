@@ -39,6 +39,7 @@ Usage:
 import argparse
 import json
 import os
+import shutil
 import sys
 import time
 from pathlib import Path
@@ -388,7 +389,33 @@ def infer_slide(slide_path, output_path, model, device, *, mpp=None, region=None
         if not quiet:
             print_plan(slide, slide_path, plan)
         H, W = plan["true_h"], plan["true_w"]
-        scratch_path = f"{output_path}.scratch.dat"
+        # Scratch can be redirected off the (possibly full) slide-data volume via
+        # GIGATIME_SCRATCH_DIR -- e.g. onto a roomier disk. Unset -> next to the
+        # output OME-TIFF as before, so the CLI/tests still work on machines
+        # without that directory configured.
+        scratch_dir = os.environ.get("GIGATIME_SCRATCH_DIR")
+        if scratch_dir:
+            os.makedirs(scratch_dir, exist_ok=True)
+            scratch_path = os.path.join(
+                scratch_dir, os.path.basename(output_path) + ".scratch.dat")
+        else:
+            scratch_path = f"{output_path}.scratch.dat"
+        # Pre-flight space guard: the scratch memmap is NON-sparse on the 9p
+        # /mnt/d mount, so it consumes its full apparent size up front. Refuse to
+        # start if the scratch volume can't hold it -- a clear fail-fast beats
+        # dying read-only at 76% and leaving a giant orphan. (Per-job check only;
+        # no one-slide-at-a-time enforcement.)
+        needed = len(KEEP_IDX) * H * W          # uint8 -> 1 byte/channel/pixel
+        gib = 1024 ** 3
+        # Headroom for filesystem overhead: dying read-only near 100% is costly,
+        # the margin is cheap. Require 10% over the scratch size, floored at 2 GB.
+        required = needed + max(2 * gib, needed // 10)
+        scratch_vol = os.path.dirname(scratch_path) or "."
+        free = shutil.disk_usage(scratch_vol).free
+        if free < required:
+            raise RuntimeError(
+                f"insufficient scratch space: needs {required / gib:.1f} GB "
+                f"(incl. headroom), has {free / gib:.1f} GB free at {scratch_vol}")
         scratch = np.memmap(scratch_path, dtype=np.uint8, mode="w+",
                             shape=(len(KEEP_IDX), H, W))
         try:
@@ -405,8 +432,17 @@ def infer_slide(slide_path, output_path, model, device, *, mpp=None, region=None
             write_ome_streaming(output_path, scratch)
         finally:
             del scratch
+            # Always attempt to remove the scratch, including on the failure path.
+            # But never let cleanup mask the real error: if the filesystem went
+            # read-only mid-run (ext4 errors=remount-ro) or filled up, os.remove
+            # itself raises OSError -- log it and continue so the *original*
+            # failure is what propagates, not the cleanup's.
             if not keep_scratch and os.path.exists(scratch_path):
-                os.remove(scratch_path)
+                try:
+                    os.remove(scratch_path)
+                except OSError as cleanup_err:
+                    print(f"WARNING: could not remove scratch file "
+                          f"{scratch_path}: {cleanup_err}", file=sys.stderr)
         results = build_results(Path(slide_path).name, plan, str(output_path),
                                 pos, prob_sum, posprob_sum, tissue_px, total,
                                 n_run, n_skip, elapsed, mpp_source=mpp_source)
