@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Cell, Pie, PieChart, ResponsiveContainer } from 'recharts'
 import SlideTable from '../components/SlideTable'
-import { APP_USER, PAGES, SLIDE_STATUS } from '../utils/constants'
+import { PAGES, SLIDE_STATUS } from '../utils/constants'
 import { statusLabel } from '../utils/helpers'
 
 // Muted green / sage / amber palette for the cohort-breakdown pie (by cancer type).
@@ -14,8 +14,9 @@ const COHORT_COLORS = {
   Other: '#B0A99A',
 }
 
-export default function DashboardPage({ slides, loading, error, onRetry, onNavigate, onViewSlide, onStopSlide, onDeleteSlide }) {
+export default function DashboardPage({ user, slides, loading, error, onRetry, onNavigate, onViewSlide, onStopSlide, onDeleteSlide }) {
   const [query, setQuery] = useState('')
+  const profile = user || {}
   const [statusFilter, setStatusFilter] = useState('all')
   const [tissueFilter, setTissueFilter] = useState('all')
 
@@ -58,9 +59,9 @@ export default function DashboardPage({ slides, loading, error, onRetry, onNavig
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-400">Overview</p>
           <h1 className="mt-1 text-3xl font-bold tracking-tight text-gray-900 dark:text-white">
-            Good morning, {APP_USER.name}
+            Good morning, {profile.name}
           </h1>
-          <p className="mt-1.5 text-sm text-gray-500 dark:text-gray-400">{APP_USER.institution} · Virtual mIF analysis overview</p>
+          <p className="mt-1.5 text-sm text-gray-500 dark:text-gray-400">{[profile.institution, 'Virtual mIF analysis overview'].filter(Boolean).join(' · ')}</p>
         </div>
         <button type="button" onClick={() => onNavigate(PAGES.UPLOAD)} className="btn-primary px-5 py-2.5">
           + Submit new slide

@@ -1,5 +1,6 @@
 """Celery tasks for running GigaTIME inference over a batch of slides."""
 
+import logging
 import sys
 from pathlib import Path
 
@@ -7,8 +8,11 @@ from asgiref.sync import async_to_sync
 from celery import shared_task
 from channels.layers import get_channel_layer
 from django.conf import settings
+from django.core.mail import send_mail
 from django.db import InterfaceError, OperationalError, close_old_connections
 from django.utils import timezone
+
+logger = logging.getLogger(__name__)
 
 from apps.slides.models import SlideResult, SlideStatus
 
@@ -27,7 +31,6 @@ from run_png_inference import (  # noqa: E402
     CHANNEL_NAMES,
     load_model,
     predict_slide,
-    write_ome_tiff,
 )
 
 # Whole-slide formats are streamed tile-by-tile via OpenSlide (run_wsi_inference)
@@ -155,6 +158,51 @@ def _notify(user_id, slide, status):
     )
 
 
+def _notify_email(owner, slide, status):
+    """Email the slide owner when processing reaches a terminal state (COMPLETED
+    or FAILED), over the same SMTP backend the OTP/2FA emails use.
+
+    Best-effort: a mail/SMTP failure must never fail the inference task or get
+    the slide stuck, so every error is caught and logged -- the bell/websocket
+    notification (_notify) still fires regardless. No email is sent for a
+    user-initiated CANCELLED, since the user already knows they stopped it.
+    """
+    email = getattr(owner, "email", None)
+    if not email:
+        return
+    if status == SlideStatus.COMPLETED:
+        subject = f'biostack-mIF — "{slide.filename}" processing complete'
+        body = (
+            f'Good news — processing of your slide "{slide.filename}" is '
+            f"complete.\n\n"
+            f"The 21 predicted marker-channel percentages are ready to view in "
+            f"biostack-mIF under My Slides.\n\n"
+            f"— biostack-mIF (research use only; not for clinical diagnosis)"
+        )
+    elif status == SlideStatus.FAILED:
+        subject = f'biostack-mIF — "{slide.filename}" processing failed'
+        body = (
+            f'Unfortunately, processing of your slide "{slide.filename}" '
+            f"failed.\n\n"
+            f"Reason: {slide.error_message or 'unknown error'}\n\n"
+            f"You can retry it from My Slides in biostack-mIF.\n\n"
+            f"— biostack-mIF (research use only; not for clinical diagnosis)"
+        )
+    else:
+        return
+    try:
+        send_mail(
+            subject=subject,
+            message=body,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[email],
+            fail_silently=False,
+        )
+    except Exception:  # noqa: BLE001 — email is best-effort, never fail the job
+        logger.warning("Failed to send %s email for slide %s to %s",
+                       status, slide.id, email, exc_info=True)
+
+
 def _notify_progress(user_id, slide, done, total, n_run, n_skip):
     """Push a live ``slide.progress`` event (tiles processed) to the owner."""
     channel_layer = get_channel_layer()
@@ -176,11 +224,19 @@ def _notify_progress(user_id, slide, done, total, n_run, n_skip):
 
 def _run_wsi_slide(slide, model, device, owner_id):
     """Stream-infer one whole-slide image, persisting + broadcasting tile progress
-    as it goes. Returns (marker_table, tiff_path)."""
-    from run_wsi_inference import infer_slide  # lazy: needs OpenSlide
+    as it goes. Returns the marker_table.
+
+    Uses percentages_only.infer_percentages: it reuses run_wsi_inference's tiling
+    and accumulation EXACTLY but skips the OME-TIFF and the multi-GB scratch
+    memmap (the overlay is no longer offered for download, and the percentages
+    are all the product needs). run_wsi_inference.infer_slide is left untouched
+    so the original OME-TIFF pipeline remains available as a fallback."""
+    from percentages_only import infer_percentages  # lazy: needs OpenSlide
 
     src = Path(slide.file_path)
-    tiff_path = src.parent / (src.stem + "_pred.ome.tiff")
+    # Keep the tiny results.json next to the slide under the same name the
+    # restore_slide recovery command expects, even though no OME-TIFF is written.
+    json_path = str(src.parent / (src.stem + "_pred.ome.tiff.results.json"))
 
     def progress_cb(done, total, n_run, n_skip):
         # Cooperative cancellation checkpoint: if the user asked to stop this
@@ -200,16 +256,16 @@ def _run_wsi_slide(slide, model, device, owner_id):
         except Exception:  # noqa: BLE001 — progress is best-effort
             pass
 
-    results = infer_slide(
-        src, tiff_path, model, device,
-        bg_skip=True, progress_cb=progress_cb, quiet=True)
+    results = infer_percentages(
+        src, model, device, bg_skip=True, progress_cb=progress_cb,
+        json_path=json_path, write_json=True, quiet=True)
 
     # Persist the MPP actually used during inference (and whether it came from
     # slide metadata or the assumed 40x default) onto the Slide record.
     _save_fields(slide, mpp_value=results["native_mpp"],
                  mpp_source=results["mpp_source"])
 
-    return _wsi_marker_table(results), tiff_path
+    return _wsi_marker_table(results)
 
 
 @shared_task
@@ -218,6 +274,10 @@ def run_batch_inference(batch_job_id):
     import torch
 
     batch_job = BatchJob.objects.get(id=batch_job_id)
+    # Load the owner once up front (fresh connection) so the per-slide completion
+    # email can read owner.email without a late DB query on a possibly-dropped
+    # connection after a multi-hour run.
+    owner = batch_job.owner
     _save_fields(batch_job, status=BatchJobStatus.RUNNING)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -240,22 +300,19 @@ def run_batch_inference(batch_job_id):
             ext = Path(slide.file_path).suffix.lower()
             if ext in WSI_EXTENSIONS:
                 # Whole-slide image: stream tiles via OpenSlide with live
-                # tiles-processed progress. Writes its own OME-TIFF.
-                marker_table, _tiff_path = _run_wsi_slide(
+                # tiles-processed progress. Computes the 21 marker percentages
+                # only -- no OME-TIFF, no scratch memmap.
+                marker_table = _run_wsi_slide(
                     slide, model, device, batch_job.owner_id)
             else:
                 # PNG path: predict_slide() expects a Path (it reads
                 # png_path.name); wrap the stored string path so it doesn't fail
-                # with "'str' object has no attribute 'name'".
+                # with "'str' object has no attribute 'name'". We keep only the
+                # 21 marker percentages -- the OME-TIFF overlay is no longer
+                # produced (it was a pure byproduct and is not offered anymore).
                 binary_stack, prob_stack = predict_slide(
                     model, Path(slide.file_path), device)
                 marker_table = _build_marker_table(binary_stack, prob_stack)
-
-                # OME-TIFF next to the source image: <stem>_pred.ome.tiff.
-                tiff_path = Path(slide.file_path).with_suffix("").parent / (
-                    Path(slide.file_path).stem + "_pred.ome.tiff"
-                )
-                write_ome_tiff(tiff_path, binary_stack)
 
             # update_or_create so re-running a slide replaces its result instead
             # of raising on the OneToOne unique constraint. Reconnect first in
@@ -268,6 +325,7 @@ def run_batch_inference(batch_job_id):
                          completed_at=timezone.now())
 
             _notify(batch_job.owner_id, slide, SlideStatus.COMPLETED)
+            _notify_email(owner, slide, SlideStatus.COMPLETED)
         except SlideCancelled:
             # User-requested stop -- mark CANCELLED (not FAILED) and leave the
             # rest of the batch running.
@@ -286,6 +344,7 @@ def run_batch_inference(batch_job_id):
                          error_message=str(exc), completed_at=timezone.now())
 
             _notify(batch_job.owner_id, slide, SlideStatus.FAILED)
+            _notify_email(owner, slide, SlideStatus.FAILED)
 
     if not failed:
         _save_fields(batch_job, status=BatchJobStatus.COMPLETED,

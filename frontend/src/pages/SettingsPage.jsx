@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Moon, ShieldCheck, Sun } from 'lucide-react'
 import { cn } from '../utils/helpers'
-import { APP_USER, PAGES } from '../utils/constants'
+import { PAGES } from '../utils/constants'
 
 function Toggle({ checked, onChange }) {
   return (
@@ -23,9 +23,10 @@ function Row({ title, desc, children }) {
   )
 }
 
-export default function SettingsPage({ isDark, onToggleTheme, onNavigate }) {
+export default function SettingsPage({ user, isDark, onToggleTheme, onNavigate }) {
   const [emailNotif, setEmailNotif] = useState(true)
   const [slideNotif, setSlideNotif] = useState(true)
+  const profile = user || {}
 
   return (
     <div className="mx-auto max-w-2xl animate-fade-in space-y-8">
@@ -37,11 +38,11 @@ export default function SettingsPage({ isDark, onToggleTheme, onNavigate }) {
       <div className="card p-6">
         <h3 className="mb-2 font-semibold text-gray-900 dark:text-white">Profile</h3>
         <div className="flex items-center gap-4 py-2">
-          <span className="flex h-14 w-14 items-center justify-center rounded-full bg-brand text-xl font-bold text-white">{APP_USER.initials}</span>
+          <span className="flex h-14 w-14 items-center justify-center rounded-full bg-brand text-xl font-bold text-white">{profile.initials}</span>
           <div>
-            <p className="font-semibold text-gray-900 dark:text-white">{APP_USER.name}</p>
-            <p className="text-sm text-gray-500 dark:text-gray-400">{APP_USER.email}</p>
-            <p className="text-xs text-gray-400">{APP_USER.institution}</p>
+            <p className="font-semibold text-gray-900 dark:text-white">{profile.name}</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400">{profile.email}</p>
+            {profile.institution && <p className="text-xs text-gray-400">{profile.institution}</p>}
           </div>
         </div>
       </div>

@@ -6,7 +6,6 @@ from .views import (
     SlideListView,
     SlideResultView,
     SlideStopView,
-    SlideTiffDownloadView,
     SlideUploadView,
 )
 
@@ -20,9 +19,4 @@ urlpatterns = [
     path("<uuid:pk>/", SlideItemView.as_view(), name="slide-detail"),
     path("<uuid:pk>/results/", SlideResultView.as_view(), name="slide-results"),
     path("<uuid:pk>/stop/", SlideStopView.as_view(), name="slide-stop"),
-    path(
-        "<uuid:pk>/download-tiff/",
-        SlideTiffDownloadView.as_view(),
-        name="slide-download-tiff",
-    ),
 ]

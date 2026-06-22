@@ -153,7 +153,7 @@ export default function App() {
   function renderPage() {
     switch (page) {
       case PAGES.DASHBOARD:
-        return <DashboardPage slides={slides} loading={loading} error={error} onRetry={refetch} onNavigate={navigate} onViewSlide={viewSlide} onStopSlide={handleStopSlide} onDeleteSlide={handleDeleteSlide} />
+        return <DashboardPage user={toNavUser(user)} slides={slides} loading={loading} error={error} onRetry={refetch} onNavigate={navigate} onViewSlide={viewSlide} onStopSlide={handleStopSlide} onDeleteSlide={handleDeleteSlide} />
       case PAGES.UPLOAD:
         return <UploadPage createSlide={createSlide} onNavigate={navigate} onSlideCreated={(slide) => { setToast('Slide uploaded — analysis started'); viewSlide(slide) }} />
       case PAGES.RESULTS:
@@ -163,7 +163,7 @@ export default function App() {
       case PAGES.HISTORY:
         return <HistoryPage slides={slides} loading={loading} onView={viewSlide} onCompareSelected={compareSelected} onStopSlide={handleStopSlide} onDeleteSlide={handleDeleteSlide} />
       case PAGES.SETTINGS:
-        return <SettingsPage isDark={isDark} onToggleTheme={toggleTheme} onNavigate={navigate} />
+        return <SettingsPage user={toNavUser(user)} isDark={isDark} onToggleTheme={toggleTheme} onNavigate={navigate} />
       case PAGES.NOTICE:
         return <NoticePage onAccept={() => setToast('Acknowledgement saved')} />
       default:

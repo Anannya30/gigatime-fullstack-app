@@ -26,7 +26,7 @@ export default function NoticePage({ onAccept, firstView = false }) {
         </span>
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-gray-900 dark:text-white">Privacy & Research Notice</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400">Please review before using GigaTIME.</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400">Please review before using biostack-mIF.</p>
         </div>
       </div>
 
@@ -37,7 +37,7 @@ export default function NoticePage({ onAccept, firstView = false }) {
             Research Use Only
           </div>
           <p className="mt-1.5 text-sm text-accent-dark/90 dark:text-accent/90">
-            GigaTIME generates virtual multiplex immunofluorescence from H&E for research purposes only. Outputs are
+            biostack-mIF generates virtual multiplex immunofluorescence from H&E for research purposes only. Outputs are
             <strong> not intended for clinical care, diagnosis, or treatment decisions.</strong>
           </p>
         </div>

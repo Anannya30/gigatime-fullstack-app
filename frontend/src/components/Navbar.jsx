@@ -11,11 +11,11 @@ export function Logo({ className }) {
   return <img src={biostackLogo} alt={`${APP_NAME} logo`} className={cn('object-contain', className)} />
 }
 
-/** Serif notebook wordmark: "Giga" + italic "TIME" (TIME in green when accentTime). */
+/** Serif notebook wordmark: "biostack-" + italic "mIF" (mIF in green when accentTime). */
 export function Wordmark({ className, accentTime = false }) {
   return (
     <span className={cn('font-serif text-lg font-bold tracking-tight text-gray-900 dark:text-white', className)}>
-      Giga<span className={cn('italic', accentTime && 'text-brand dark:text-brand-light')}>TIME</span>
+      biostack-<span className={cn('italic', accentTime && 'text-brand dark:text-brand-light')}>mIF</span>
     </span>
   )
 }

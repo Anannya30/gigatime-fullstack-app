@@ -155,33 +155,6 @@ export async function getSlideResults(id) {
   return handleResponse(await authFetch(`/slides/${id}/results/`))
 }
 
-/**
- * GET /api/slides/<id>/download-tiff/ — fetch the OME-TIFF as a blob and
- * trigger a browser download via a temporary anchor element.
- */
-export async function downloadTiff(id) {
-  const res = await authFetch(`/slides/${id}/download-tiff/`)
-  if (!res.ok) {
-    // Reuse the JSON error handling for non-2xx (e.g. 404 not ready yet).
-    return handleResponse(res)
-  }
-  const blob = await res.blob()
-  // Try to honor the server-provided filename, else fall back to a sane default.
-  const disposition = res.headers.get('Content-Disposition') || ''
-  const match = disposition.match(/filename="?([^"]+)"?/)
-  const filename = match ? match[1] : `${id}_pred.ome.tiff`
-
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  document.body.appendChild(a)
-  a.click()
-  a.remove()
-  URL.revokeObjectURL(url)
-  return blob
-}
-
 /** POST /api/inference/batch/ — queue a batch inference run for slide ids. */
 export async function submitBatchInference(slideIds) {
   return handleResponse(

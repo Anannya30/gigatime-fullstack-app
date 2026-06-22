@@ -1,10 +1,11 @@
-"""Standalone: compute the 21 positive-marker percentages for ONE slide WITHOUT
-building the OME-TIFF.
+"""Compute the 21 positive-marker percentages for ONE slide WITHOUT building
+the OME-TIFF and WITHOUT a multi-GB scratch memmap on disk.
 
 Why this is correct (no new math, no risk of different numbers):
   * It reuses run_wsi_inference.run_inference EXACTLY -- the same tiling, the
     same 50%-overlap band flushing, the same per-channel accumulation as the
-    real pipeline.
+    real pipeline. run_wsi_inference itself is never modified, so the original
+    OME-TIFF pipeline (infer_slide) stays available untouched as a fallback.
   * run_inference only reads ``scratch.shape`` and *assigns* finished bands into
     the scratch; it never reads the scratch contents back (that happens later in
     write_ome_streaming, which we deliberately skip). So we hand it a NoOpScratch
@@ -13,9 +14,15 @@ Why this is correct (no new math, no risk of different numbers):
   * The 21 percentages come from build_results' positive_pixel_pct, i.e.
     pos_counts[c] / (H*W) * 100 -- exactly the reduction the finalization does.
 
-Usage: python percentages_only.py <slide_path> <out_txt>
-Does NOT touch the DB, does NOT write an OME-TIFF, does NOT re-run anything else.
+Two entry points:
+  * ``infer_percentages(slide_path, model, device, ...)`` -- importable by the
+    Celery worker / API: pass a preloaded model + device and an optional
+    progress_cb, get back run_wsi_inference's results dict. Does NOT touch the
+    DB and writes no OME-TIFF; optionally writes the small results.json.
+  * the CLI below -- ``python percentages_only.py <slide_path> <out_txt>`` --
+    loads the model itself and writes the percentages to a text file.
 """
+import json
 import sys
 import time
 from pathlib import Path
@@ -49,6 +56,45 @@ class NoOpScratch:
         pass
 
 
+def infer_percentages(slide_path, model, device, *, mpp=None, region=None,
+                      bg_skip=True, progress_cb=None, json_path=None,
+                      write_json=False, quiet=True):
+    """One slide -> run_wsi_inference results dict, computing ONLY the positive-
+    marker percentages (no OME-TIFF, no scratch memmap).
+
+    Designed to be called from the Celery worker / API as well as the CLI:
+    pass a model preloaded via load_gigatime_model and the same device, plus an
+    optional ``progress_cb(done, total, n_run, n_skip)`` for a live progress
+    bar. When ``write_json`` and ``json_path`` are given, the small results.json
+    is written there (same content as the full pipeline) so the restore_slide
+    recovery command keeps working even though no OME-TIFF exists.
+    """
+    slide = openslide.OpenSlide(str(slide_path))
+    try:
+        native_mpp, mpp_source = read_native_mpp(slide, mpp)
+        plan = plan_slide(slide, native_mpp, region)
+        H, W = plan["true_h"], plan["true_w"]
+        if not quiet:
+            print(f"plan: H={H} W={W} n_tiles={plan['n_tiles']} "
+                  f"mpp={native_mpp} ({mpp_source})", flush=True)
+        scratch = NoOpScratch((len(wsi.KEEP_IDX), H, W))
+        t0 = time.time()
+        (pos, prob_sum, posprob_sum, tissue_px, total, n_run,
+         n_skip) = run_inference(slide, plan, model, device, scratch,
+                                 bg_skip=bg_skip, progress_cb=progress_cb)
+        elapsed = time.time() - t0
+    finally:
+        slide.close()
+
+    results = build_results(Path(slide_path).name, plan, "(no OME-TIFF)",
+                            pos, prob_sum, posprob_sum, tissue_px, total,
+                            n_run, n_skip, elapsed, mpp_source=mpp_source)
+    if write_json and json_path:
+        with open(json_path, "w") as f:
+            json.dump(results, f, indent=2)
+    return results
+
+
 def main():
     slide_path = sys.argv[1]
     out_txt = sys.argv[2]
@@ -63,34 +109,14 @@ def main():
     model, device = load_gigatime_model(device)
     print("model loaded", flush=True)
 
-    slide = openslide.OpenSlide(str(slide_path))
-    try:
-        native_mpp, mpp_source = read_native_mpp(slide, None)
-        plan = plan_slide(slide, native_mpp, None)
-        H, W = plan["true_h"], plan["true_w"]
-        print(f"plan: H={H} W={W} n_tiles={plan['n_tiles']} "
-              f"mpp={native_mpp} ({mpp_source})", flush=True)
+    def progress_cb(done, total, n_run, n_skip):
+        if done % 10000 == 0 or done == total:
+            pct = 100.0 * done / total
+            print(f"  progress {done}/{total} ({pct:.1f}%) "
+                  f"run={n_run} skip={n_skip}", flush=True)
 
-        scratch = NoOpScratch((len(wsi.KEEP_IDX), H, W))
-
-        def progress_cb(done, total, n_run, n_skip):
-            if done % 10000 == 0 or done == total:
-                pct = 100.0 * done / total
-                print(f"  progress {done}/{total} ({pct:.1f}%) "
-                      f"run={n_run} skip={n_skip}", flush=True)
-
-        t0 = time.time()
-        (pos, prob_sum, posprob_sum, tissue_px, total, n_run,
-         n_skip) = run_inference(slide, plan, model, device,
-                                 bg_skip=True, scratch=scratch,
-                                 progress_cb=progress_cb)
-        elapsed = time.time() - t0
-    finally:
-        slide.close()
-
-    results = build_results(Path(slide_path).name, plan, "(no OME-TIFF)",
-                            pos, prob_sum, posprob_sum, tissue_px, total,
-                            n_run, n_skip, elapsed, mpp_source=mpp_source)
+    results = infer_percentages(slide_path, model, device,
+                                progress_cb=progress_cb, quiet=False)
 
     lines = [
         "# GigaTIME positive-marker percentages",

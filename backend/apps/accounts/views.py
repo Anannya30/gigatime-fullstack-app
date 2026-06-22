@@ -135,9 +135,9 @@ class RegisterView(APIView):
         user.save()
 
         send_mail(
-            subject="Welcome to GigaTIME",
+            subject="Welcome to biostack-mIF",
             message=(
-                f"Hi {first_name}, your GigaTIME account has been created. "
+                f"Hi {first_name}, your biostack-mIF account has been created. "
                 "You can now sign in at http://localhost"
             ),
             from_email=settings.DEFAULT_FROM_EMAIL,
@@ -192,7 +192,7 @@ class EmailPasswordLoginView(APIView):
         )
 
         send_mail(
-            subject="GigaTIME — Your verification code",
+            subject="biostack-mIF — Your verification code",
             message=(
                 f"Your verification code is: {otp}\n\n"
                 "This code expires in 10 minutes.\n\n"
@@ -306,7 +306,7 @@ class ForgotPasswordRequestView(APIView):
         )
 
         send_mail(
-            subject="GigaTIME — Password reset code",
+            subject="biostack-mIF — Password reset code",
             message=(
                 f"Your password reset code is: {otp}\n\n"
                 "This code expires in 10 minutes.\n\n"

@@ -168,8 +168,8 @@ class SlideTests(APITestCase):
             )
 
 
-# A WSI inference results dict in the shape run_wsi_inference.infer_slide returns,
-# carrying the MPP value + source the task is expected to persist onto the slide.
+# A WSI inference results dict in the shape percentages_only.infer_percentages
+# returns, carrying the MPP value + source the task is expected to persist.
 FAKE_WSI_RESULTS = {
     "slide": "wsi.tif",
     "output_path": "/tmp/wsi_pred.ome.tiff",
@@ -220,7 +220,8 @@ class SlideMppPersistenceTests(TransactionTestCase):
         batch.slides.set([slide])
 
         with patch("apps.inference.tasks.load_model", return_value=MagicMock()), \
-                patch("run_wsi_inference.infer_slide", return_value=FAKE_WSI_RESULTS):
+                patch("percentages_only.infer_percentages",
+                      return_value=FAKE_WSI_RESULTS):
             run_batch_inference.delay(str(batch.id))
 
         slide.refresh_from_db()

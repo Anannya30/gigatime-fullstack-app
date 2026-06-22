@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ChevronDown, Download, FileText, Trash2 } from 'lucide-react'
+import { ChevronDown, FileText, Trash2 } from 'lucide-react'
 import TileProgressBar from '../components/TileProgressBar'
 import StatusBadge from '../components/StatusBadge'
-import { getSlideResults, downloadTiff } from '../api/slidesApi'
+import { getSlideResults } from '../api/slidesApi'
 import { SLIDE_STATUS, PAGES } from '../utils/constants'
 import { cn, isStoppable, statusLabel } from '../utils/helpers'
 
@@ -78,7 +78,7 @@ function buildMarkerReport(slide, markers) {
   const sep = COLS.map((c) => '-'.repeat(c.width)).join('  ')
 
   const lines = [
-    'GigaTIME — Marker Positivity Report',
+    'biostack-mIF — Marker Positivity Report',
     'RESEARCH USE ONLY — NOT FOR CLINICAL DIAGNOSIS',
     '',
     `Slide:     ${slide.filename}`,
@@ -184,14 +184,6 @@ export default function ResultsPage({ slide, onNavigate, onToast, onStop, onDele
     URL.revokeObjectURL(url)
     onToast?.('Marker report — download started')
   }
-  const handleDownloadTiff = async () => {
-    try {
-      await downloadTiff(slide.id)
-      onToast?.('OME-TIFF — download started')
-    } catch (e) {
-      onToast?.(e.message || 'OME-TIFF not ready yet')
-    }
-  }
   const statusLine = slide.errorMessage || slide.progress?.stage || statusLabel(slide.status)
 
   const histology = slide.histology || slide.notes || ''
@@ -251,21 +243,8 @@ export default function ResultsPage({ slide, onNavigate, onToast, onStop, onDele
         )}
       </div>
 
-      {/* 3 — Actions. Download + Export stay disabled until inference completes. */}
+      {/* 3 — Actions. Export stays disabled until inference completes. */}
       <div className="flex flex-wrap items-center gap-3">
-        <button
-          type="button"
-          onClick={handleDownloadTiff}
-          disabled={!isDone}
-          title={isDone ? undefined : 'Available once processing completes'}
-          className={cn(
-            'inline-flex items-center gap-2 rounded-[5px] bg-[#3E6B5C] px-5 py-2.5 text-sm font-semibold text-white transition-colors',
-            isDone ? 'hover:bg-[#33594d]' : 'cursor-not-allowed opacity-50'
-          )}
-        >
-          <Download className="h-4 w-4" />
-          Download OME-TIFF
-        </button>
         <button
           type="button"
           onClick={handleExport}

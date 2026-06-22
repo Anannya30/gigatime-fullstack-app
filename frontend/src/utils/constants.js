@@ -9,15 +9,8 @@ import {
 // ---------------------------------------------------------------------------
 // Application identity
 // ---------------------------------------------------------------------------
-export const APP_NAME = 'GigaTIME'
+export const APP_NAME = 'biostack-mIF'
 export const APP_TAGLINE = 'Virtual mIF from H&E — Population-scale tissue analysis'
-
-export const APP_USER = {
-  name: 'Anannya',
-  institution: 'Research Lab',
-  email: 'anannya@researchlab.org',
-  initials: 'A',
-}
 
 export const THEME_STORAGE_KEY = 'gigatime-theme'
 export const CONSENT_STORAGE_KEY = 'gigatime-privacy-accepted'
