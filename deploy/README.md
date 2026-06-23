@@ -117,9 +117,12 @@ script):
   name, Option A). **Override only if you rename the worker** — a wrong name makes
   the check fail and (fail-safe) the VM never auto-stops.
 
-The VM's runtime service account is granted a **least-privilege custom role**
-(`compute.instances.stop`/`start`/`get` only — set up in
-`setup_infrastructure.sh`) so it can stop itself and nothing more.
+The VM's runtime service account is bound the **built-in role
+`roles/compute.instanceAdmin.v1`** (set up in `setup_infrastructure.sh`) so it can
+stop/start itself. This is **broader** than the intended least-privilege custom
+role (`compute.instances.stop`/`start`/`get` only) — that custom role needs
+`roles/iam.roleAdmin`, which the deploying account does not currently have, so it
+can be tightened back to the custom role once `roles/iam.roleAdmin` is available.
 
 **Restart is manual** for now:
 ```bash

@@ -49,20 +49,55 @@ fi
 nvidia-smi || echo "    WARNING: nvidia-smi not ready yet (driver may still be installing on first boot)"
 
 # --- 2. Docker + NVIDIA Container Toolkit -----------------------------------
-# DLVM images ship Docker + the NVIDIA Container Toolkit preinstalled. For a
-# plain Ubuntu base image, uncomment the install block below.
+# The base image (Deep Learning VM) ships Docker AND the NVIDIA Container Toolkit
+# preinstalled, so BOTH blocks below are normally skipped — they are a fallback
+# for a plain base image. CRITICAL: the toolkit step is made NON-INTERACTIVE and
+# NON-FATAL. Previously the gpg key step tried to open /dev/tty and failed under
+# `set -euo pipefail`, which KILLED the whole startup (no secrets, no .env, no
+# `docker compose up`). A failed re-install of an already-working toolkit must
+# never abort boot.
+
+# 2a. Docker (only if missing).
 if ! command -v docker >/dev/null 2>&1; then
-  echo "==> Installing Docker + NVIDIA Container Toolkit (non-DLVM path) ..."
+  echo "==> Installing Docker (not present) ..."
   apt-get update -y
   apt-get install -y docker.io curl gnupg
   systemctl enable --now docker
-  # NVIDIA Container Toolkit (lets `docker --gpus all` see the L4):
-  curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
-  curl -fsSL https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list \
-    | sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' \
-    > /etc/apt/sources.list.d/nvidia-container-toolkit.list
-  apt-get update -y && apt-get install -y nvidia-container-toolkit
-  nvidia-ctk runtime configure --runtime=docker && systemctl restart docker
+else
+  echo "==> Docker already present — skipping Docker install."
+fi
+
+# 2b. NVIDIA Container Toolkit — install ONLY if it is not already there. Guard
+#     on `nvidia-ctk` AND the nvidia runtime already being registered with Docker.
+if command -v nvidia-ctk >/dev/null 2>&1 || docker info 2>/dev/null | grep -qi nvidia; then
+  echo "==> NVIDIA Container Toolkit already present — skipping."
+else
+  echo "==> Installing NVIDIA Container Toolkit (not present) ..."
+  # Run in a subshell with its own `set -e`; the trailing `|| echo` swallows any
+  # failure so a known-safe install error cannot trip the outer pipefail/errexit
+  # and abort the rest of the startup. gpg uses --batch --yes so it never tries
+  # to open /dev/tty in this non-interactive boot environment.
+  (
+    set -e
+    curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey \
+      | gpg --batch --yes --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+    curl -fsSL https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list \
+      | sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' \
+      > /etc/apt/sources.list.d/nvidia-container-toolkit.list
+    apt-get update -y
+    apt-get install -y nvidia-container-toolkit
+    nvidia-ctk runtime configure --runtime=docker
+    systemctl restart docker
+  ) || echo "WARN: NVIDIA Container Toolkit install step failed — continuing (the base image's preinstalled toolkit is expected to work)."
+fi
+
+# 2c. Non-fatal GPU-in-Docker check (logged; must NEVER abort boot). The stack
+#     comes up regardless of the result here.
+echo "==> Checking GPU visibility inside Docker (non-fatal) ..."
+if docker info 2>/dev/null | grep -qi nvidia; then
+  echo "    OK: docker reports the nvidia runtime is registered."
+else
+  echo "    WARN: GPU runtime check inconclusive (nvidia runtime not listed by 'docker info'); continuing."
 fi
 
 # --- 3. Authenticate Docker to Artifact Registry ----------------------------
@@ -91,6 +126,12 @@ cat > "${APP_DIR}/.env" <<ENV
 DJANGO_SETTINGS_MODULE=gigatime_backend.settings.production
 SECRET_KEY=${DJANGO_SECRET_KEY}
 DB_HOST=db
+# DB_USER / DB_NAME MUST match the Postgres container created in the Option B
+# docker-compose.prod.yml below (POSTGRES_USER=gigatime_user, POSTGRES_DB=
+# gigatime_db). Without these, Django falls back to its defaults (user "postgres",
+# db "gigatime") and auth fails against the gigatime_user/gigatime_db database.
+DB_USER=gigatime_user
+DB_NAME=gigatime_db
 DB_PASSWORD=${DB_PASSWORD}
 POSTGRES_PASSWORD=${DB_PASSWORD}
 REDIS_URL=${REDIS_URL}

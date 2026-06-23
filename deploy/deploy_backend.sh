@@ -45,7 +45,7 @@ BOOT_DISK_TYPE="${BOOT_DISK_TYPE:-pd-ssd}"
 
 # --- Base image: Google Deep Learning VM (CUDA + Docker + NVIDIA toolkit) -----
 # common-cu123 = Debian + CUDA 12.3 toolchain; driver 535+ supports L4 (Ada).
-IMAGE_FAMILY="${IMAGE_FAMILY:-common-cu123}"
+IMAGE_FAMILY="${IMAGE_FAMILY:-common-cu129-ubuntu-2204-nvidia-580}"
 IMAGE_PROJECT="${IMAGE_PROJECT:-deeplearning-platform-release}"
 
 # --- Artifact Registry / image ----------------------------------------------
@@ -53,7 +53,12 @@ AR_REPO="${AR_REPO:-gigatime}"
 AR_LOCATION="${AR_LOCATION:-asia-south1}"
 IMAGE_TAG="${IMAGE_TAG:-latest}"
 BACKEND_IMAGE="${AR_LOCATION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO}/backend:${IMAGE_TAG}"
-BACKEND_CONTEXT="${BACKEND_CONTEXT:-../backend}"   # path to backend Dockerfile context (repo-relative)
+# Build context is the REPO ROOT (one level up from deploy/) so the image bundles
+# BOTH backend/ and ml/scripts/ — fixes "ModuleNotFoundError: run_png_inference"
+# (the cloud image has no runtime mount). The Dockerfile lives at backend/Dockerfile,
+# and the repo-root .dockerignore keeps the 5.3 GB ml/data/ out of the context.
+BUILD_CONTEXT="${BUILD_CONTEXT:-$(cd "$(dirname "$0")/.." && pwd)}"
+DOCKERFILE="${DOCKERFILE:-${BUILD_CONTEXT}/backend/Dockerfile}"
 
 # --- Runtime identity / storage / mode ---------------------------------------
 RUNTIME_SA_EMAIL="${RUNTIME_SA_EMAIL:-gigatime-backend-sa@${PROJECT_ID}.iam.gserviceaccount.com}"
@@ -101,10 +106,13 @@ echo "    > Edit Quotas > request >= 1. Deployment will FAIL until this is grant
 echo "==> [1/3] Building + pushing backend image: ${BACKEND_IMAGE}"
 gcloud auth configure-docker "${AR_LOCATION}-docker.pkg.dev" --quiet
 # linux/amd64 explicitly so the image runs on the x86 GPU VM regardless of your laptop arch.
-docker build --platform=linux/amd64 -t "${BACKEND_IMAGE}" "${BACKEND_CONTEXT}"
+# -f points at backend/Dockerfile; the context is the repo root (bundles ml/scripts).
+docker build --platform=linux/amd64 -f "${DOCKERFILE}" -t "${BACKEND_IMAGE}" "${BUILD_CONTEXT}"
 docker push "${BACKEND_IMAGE}"
-#   Alternative (build in the cloud, no local Docker needed):
-#   gcloud builds submit "${BACKEND_CONTEXT}" --tag "${BACKEND_IMAGE}" --project "${PROJECT_ID}"
+#   Alternative (build in the cloud, no local Docker needed). The Dockerfile is at
+#   backend/Dockerfile relative to the repo-root context, so pass it explicitly via
+#   a cloudbuild config (plain `--tag` expects a Dockerfile at the context root):
+#   gcloud builds submit "${BUILD_CONTEXT}" --config "${BUILD_CONTEXT}/deploy/cloudbuild.backend.yaml" --project "${PROJECT_ID}"
 
 # -----------------------------------------------------------------------------
 # 2. Sanity-check the startup script exists

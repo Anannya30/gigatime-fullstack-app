@@ -29,7 +29,14 @@ services:
       retries: 5
 
   backend:
-    build: ./backend
+    # Build from the REPO ROOT (context: .) with the backend Dockerfile, so the
+    # image bundles BOTH backend/ and ml/scripts/ (the latter lives outside
+    # backend/). This makes the image self-contained — it no longer depends on
+    # the ./ml/scripts volume mount below to find run_png_inference. The root
+    # .dockerignore keeps the 5.3 GB ml/data/ out of the build context.
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
     # Tag the built image so the celery service can reuse it instead of
     # building (and exporting) the same multi-GB torch image a second time.
     image: gigatime-backend:latest
@@ -49,7 +56,8 @@ services:
     volumes:
       # Slide storage persisted on the host.
       - ./ml/data:/app/ml/data
-      # ML inference code (run_png_inference.py and friends).
+      # ML inference code is now BAKED into the image; this mount only overlays it
+      # for live editing during local dev (handy, but no longer required to run).
       - ./ml/scripts:/app/ml/scripts
       - ./ml/environment.yml:/app/ml/environment.yml
       - ~/.cache/huggingface:/root/.cache/huggingface

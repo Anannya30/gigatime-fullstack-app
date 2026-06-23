@@ -34,10 +34,6 @@ GCS_LOCATION="${GCS_LOCATION:-asia-south1}"        # single-region India. NOT "a
 RUNTIME_SA_NAME="${RUNTIME_SA_NAME:-gigatime-backend-sa}"
 RUNTIME_SA_EMAIL="${RUNTIME_SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
 
-# Custom IAM role id letting the VM stop/start ITSELF for idle auto-stop
-# (least privilege — see section 3c). Project-scoped role.
-SELF_STOP_ROLE_ID="${SELF_STOP_ROLE_ID:-gigatimeSelfStop}"
-
 # GCS service account whose HMAC key gives S3-compatible access.
 # (Can be the same SA as the runtime SA — kept separate here for clarity.)
 GCS_HMAC_SA_NAME="${GCS_HMAC_SA_NAME:-gigatime-gcs-s3}"
@@ -121,30 +117,20 @@ gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
   --member="serviceAccount:${RUNTIME_SA_EMAIL}" \
   --role="roles/artifactregistry.reader" --condition=None 1>/dev/null
 
-# 3c. Custom role so the VM can STOP/START ITSELF (idle auto-stop watcher).
-#     Least privilege: EXACTLY compute.instances.stop/start/get and nothing more.
-#     The built-in roles/compute.instanceAdmin.v1 would also work but is far too
-#     broad (create/delete/attach-disk/etc.) — we deliberately avoid it so a
-#     compromised VM token cannot do more than stop/start/get this instance.
-echo "    Ensuring custom role '${SELF_STOP_ROLE_ID}' (compute.instances.stop/start/get) ..."
-SELF_STOP_PERMS="compute.instances.stop,compute.instances.start,compute.instances.get"
-if gcloud iam roles describe "${SELF_STOP_ROLE_ID}" --project "${PROJECT_ID}" >/dev/null 2>&1; then
-  # Idempotent: keep the permission set in sync if the role already exists.
-  gcloud iam roles update "${SELF_STOP_ROLE_ID}" --project "${PROJECT_ID}" \
-    --permissions="${SELF_STOP_PERMS}" 1>/dev/null
-  echo "    custom role exists — permissions synced"
-else
-  gcloud iam roles create "${SELF_STOP_ROLE_ID}" --project "${PROJECT_ID}" \
-    --title="GigaTIME self stop/start" \
-    --description="Allow the backend VM to stop/start/get ITSELF for idle auto-stop." \
-    --permissions="${SELF_STOP_PERMS}" \
-    --stage=GA 1>/dev/null
-fi
-# Bind the custom role to the runtime SA. The VM already runs with
-# --scopes=cloud-platform (set in deploy_backend.sh), so no scope change needed.
+# 3c. Allow the VM to STOP/START ITSELF (idle auto-stop watcher) by binding the
+#     BUILT-IN role roles/compute.instanceAdmin.v1 to the runtime SA.
+#     TRADE-OFF (honest): this built-in role is BROADER than the intended
+#     least-privilege custom role (which would have been EXACTLY
+#     compute.instances.stop/start/get). We use the built-in because creating a
+#     custom role requires roles/iam.roleAdmin, which the deploying account does
+#     NOT have (it has roles/editor + roles/resourcemanager.projectIamAdmin). If
+#     roles/iam.roleAdmin is granted later, this can be tightened back to the
+#     custom role. The VM already runs with --scopes=cloud-platform (set in
+#     deploy_backend.sh), so no scope change is needed.
+echo "    Binding built-in roles/compute.instanceAdmin.v1 to ${RUNTIME_SA_EMAIL} (self stop/start) ..."
 gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
   --member="serviceAccount:${RUNTIME_SA_EMAIL}" \
-  --role="projects/${PROJECT_ID}/roles/${SELF_STOP_ROLE_ID}" --condition=None 1>/dev/null
+  --role="roles/compute.instanceAdmin.v1" --condition=None 1>/dev/null
 
 # -----------------------------------------------------------------------------
 # 4. GCS bucket (single-region India) + bucket-scoped access for the HMAC SA

@@ -1,0 +1,46 @@
+# Build-context excludes for the backend image, which is now built from the REPO
+# ROOT (so it can COPY both backend/ and ml/scripts/). Without these, `docker
+# build` would ship the whole repo to the daemon — including the multi-GB
+# ml/data/ slide store — making builds slow/huge. Keep this tight.
+
+# Version control / tooling
+.git
+.gitignore
+.github
+.vscode
+.idea
+.DS_Store
+
+# Secrets — NEVER bake into the image. Real values come from Secret Manager
+# (cloud) or the local backend/.env mount. (.env.example is NOT matched here.)
+**/.env
+
+# Python caches / build artifacts
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+*.egg-info/
+.venv/
+venv/
+
+# The 5.3 GB slide store and any large image artifacts — NOT needed in the image
+# (slides are read from the mounted volume / GCS at runtime, not baked in).
+ml/data/
+**/*.svs
+**/*.tif
+**/*.tiff
+**/*.ome.tiff
+**/*.log
+
+# Heavy training-only assets that the runtime import chain does not use.
+ml/scripts/__pycache__/
+ml/scripts/*.ipynb
+
+# Frontend has its own image (Cloud Run) — not part of the backend build.
+frontend/
+
+# Deployment scripts are not part of the runtime image.
+deploy/
+
+# Local SQLite (if any) — the app uses Postgres.
+**/*.sqlite3

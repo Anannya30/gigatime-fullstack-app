@@ -1,4 +1,14 @@
 # GigaTIME Django + Celery backend image.
+#
+# IMPORTANT: this Dockerfile is built with the BUILD CONTEXT set to the REPO ROOT
+# (not backend/), so it can copy BOTH the Django backend AND the ML inference
+# scripts that live OUTSIDE backend/ at ml/scripts/. tasks.py does
+# `from run_png_inference import ...` after putting REPO_ROOT/ml/scripts on
+# sys.path (== /app/ml/scripts here), so those files MUST be in the image —
+# previously they weren't, causing `ModuleNotFoundError: No module named
+# 'run_png_inference'` in the cloud image (which has no runtime mount).
+#   Local:  docker compose up --build         (compose sets context: . below)
+#   Cloud:  deploy/deploy_backend.sh           (docker build -f backend/Dockerfile <repo-root>)
 FROM python:3.11-slim
 
 ENV PYTHONUNBUFFERED=1 \
@@ -15,14 +25,21 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python deps first so the layer is cached across code changes.
-COPY requirements.txt .
+# (Paths are repo-root-relative now: requirements.txt lives under backend/.)
+COPY backend/requirements.txt .
 # Install the CPU-only torch/torchvision wheels first so the large CUDA builds
 # are never pulled; the pins in requirements.txt are then already satisfied.
 RUN pip install --no-cache-dir torch==2.4.0 torchvision==0.19.0 --index-url https://download.pytorch.org/whl/cu124
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the backend source.
-COPY . .
+# Copy the Django backend source into /app.
+COPY backend/ /app/
+# Copy the ML inference scripts to /app/ml/scripts so REPO_ROOT(/app)/ml/scripts
+# and PYTHONPATH resolve INSIDE the image with NO runtime mount required. This is
+# the fix for the run_png_inference ModuleNotFoundError. The runtime import chain
+# needs run_png_inference.py + archs.py + run_wsi_inference.py + percentages_only.py
+# (all under ml/scripts/); copying the whole dir keeps it simple and future-proof.
+COPY ml/scripts/ /app/ml/scripts/
 
 EXPOSE 8000
 
