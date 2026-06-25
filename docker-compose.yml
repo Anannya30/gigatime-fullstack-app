@@ -50,8 +50,15 @@ services:
     environment:
       DJANGO_SETTINGS_MODULE: gigatime_backend.settings.production
       DB_HOST: db
+      # Database name/user/password come from the SAME root .env values that
+      # create the Postgres container, so they can never drift out of sync.
+      DB_NAME: ${POSTGRES_DB:-gigatime_db}
+      DB_USER: ${POSTGRES_USER:-gigatime_user}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-gigatime_pass}
       REDIS_URL: redis://redis:6379/0
-      ALLOWED_HOSTS: localhost,127.0.0.1,backend,nginx
+      # Override ALLOWED_HOSTS in the root .env to add the server's IP/hostname
+      # (or set it to * for a private/trusted machine).
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1,backend,nginx}
       PYTHONPATH: /app/ml/scripts
     volumes:
       # Slide storage persisted on the host.
@@ -85,22 +92,25 @@ services:
     environment:
       DJANGO_SETTINGS_MODULE: gigatime_backend.settings.production
       DB_HOST: db
+      DB_NAME: ${POSTGRES_DB:-gigatime_db}
+      DB_USER: ${POSTGRES_USER:-gigatime_user}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-gigatime_pass}
       REDIS_URL: redis://redis:6379/0
-      ALLOWED_HOSTS: localhost,127.0.0.1,backend,nginx
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1,backend,nginx}
       PYTHONPATH: /app/ml/scripts
       NVIDIA_VISIBLE_DEVICES: all
       NVIDIA_DRIVER_CAPABILITIES: compute,utility
-      # Redirect the multi-GB WSI scratch memmap off the C:-backed ext4 .vhdx
-      # onto the /scratch bind mount below (D: drive, more free space).
+      # Scratch space for whole-slide inference. Points at ./ml/scratch in the
+      # project folder (see the bind mount below).
       GIGATIME_SCRATCH_DIR: /scratch
     volumes:
       - ./ml/data:/app/ml/data
       - ./ml/scripts:/app/ml/scripts
       - ./ml/environment.yml:/app/ml/environment.yml
       - ~/.cache/huggingface:/root/.cache/huggingface
-      # Host D: drive (~103 GB free) backs the scratch memmap; keeps the giant
-      # transient off the chronically-full C: drive that hosts the WSL .vhdx.
-      - /mnt/d/gigatime-scratch:/scratch
+      # Scratch space for whole-slide inference, kept inside the project folder.
+      # Create it once with:  mkdir -p ml/scratch
+      - ./ml/scratch:/scratch
     command: celery -A gigatime_backend worker --loglevel=info
 
   frontend:

@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ACCESS_TOKEN_KEY } from '../api/slidesApi'
 
-const WS_BASE = import.meta.env.VITE_WS_BASE || 'ws://localhost/ws'
+// Default to the host the page was opened from (so it works when the app is
+// accessed by the server's IP/hostname, not just on the server itself); use wss
+// when the page is served over https. Override with VITE_WS_BASE at build time.
+const WS_BASE =
+  import.meta.env.VITE_WS_BASE ||
+  `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/ws`
 const RECONNECT_MS = 3000
 
 let notifSeq = 0

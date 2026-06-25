@@ -27,8 +27,9 @@ RUN apt-get update && apt-get install -y \
 # Install Python deps first so the layer is cached across code changes.
 # (Paths are repo-root-relative now: requirements.txt lives under backend/.)
 COPY backend/requirements.txt .
-# Install the CPU-only torch/torchvision wheels first so the large CUDA builds
-# are never pulled; the pins in requirements.txt are then already satisfied.
+# Install the CUDA (cu124) torch/torchvision wheels first so the GPU-enabled
+# builds are pinned before requirements.txt is resolved. The Celery worker runs
+# inference on an NVIDIA GPU, so these must be the CUDA builds (not CPU-only).
 RUN pip install --no-cache-dir torch==2.4.0 torchvision==0.19.0 --index-url https://download.pytorch.org/whl/cu124
 RUN pip install --no-cache-dir -r requirements.txt
 

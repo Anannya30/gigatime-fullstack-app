@@ -229,7 +229,10 @@ EMAIL_HOST = env('SMTP_HOST', default='localhost')
 EMAIL_PORT = env.int('SMTP_PORT', default=587)
 EMAIL_HOST_USER = env('SMTP_USERNAME', default='')
 EMAIL_HOST_PASSWORD = env('SMTP_PASSWORD', default='')
-EMAIL_USE_TLS = False
+# Gmail and most providers on port 587 require STARTTLS, so this must be
+# configurable (set EMAIL_USE_TLS=True for Gmail:587). Use EMAIL_USE_SSL instead
+# for port 465. The two are mutually exclusive.
+EMAIL_USE_TLS = env.bool('EMAIL_USE_TLS', default=False)
 EMAIL_USE_SSL = env.bool('EMAIL_USE_SSL', default=False)
 DEFAULT_FROM_EMAIL = env('SMTP_USERNAME', default='noreply@gigatime.ai')
 OTP_EXPIRY_MINUTES = env.int('OTP_EXPIRY_MINUTES', default=10)
