@@ -88,15 +88,17 @@ https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install
 
 ## Part 3 — Get the project files
 
-Put the project folder on the server (use whichever you were given):
+Download the project onto the server with Git:
 
 ```bash
-# If you have the Git link:
-git clone <REPO_URL> gigatime-fullstack-app
-
-# Or if you were sent a .zip:
-unzip gigatime-fullstack-app.zip
+git clone https://github.com/Anannya30/gigatime-fullstack-app.git
 ```
+
+> If `git` isn't installed: `sudo apt update && sudo apt install -y git`, then run the clone again.
+>
+> Alternatively, download it as a ZIP from
+> https://github.com/Anannya30/gigatime-fullstack-app → green **Code** button →
+> **Download ZIP**, then unzip it on the server.
 
 Go into the folder — **run every later command from here**:
 
@@ -172,7 +174,6 @@ Fill in these values:
 | `SMTP_PASSWORD` | The 16‑char App Password from Part 5 |
 | `EMAIL_USE_SSL` | `True` |
 | `EMAIL_USE_TLS` | `False` |
-| `FRONTEND_URL` | `http://YOUR_SERVER_IP/` (your server's address) |
 
 To generate a `SECRET_KEY`, run this and paste the output:
 
@@ -180,7 +181,8 @@ To generate a `SECRET_KEY`, run this and paste the output:
 python3 -c "import secrets; print(secrets.token_urlsafe(64))"
 ```
 
-> You can ignore the Google login and `DB_*` lines — they're not needed here.
+> You can leave every other line in the file as-is — the Google login, `DB_*`,
+> and `FRONTEND_URL` lines are not needed for this setup.
 
 Save and close.
 
@@ -231,8 +233,14 @@ You should see `User created: you@gmail.com`.
 
 ## Part 10 — Open the app and log in
 
-1. On your laptop, open a browser and go to:  `http://YOUR_SERVER_IP/`
-   (Find the server's IP with `hostname -I` on the server.)
+1. Open a browser and go to the app:
+   - **If you're using the same machine that's running the app:** go to `http://localhost/`
+   - **If you're opening it from a different computer (e.g. your laptop):** go to
+     `http://SERVER_IP/`. To find `SERVER_IP`, run this on the server:
+     ```bash
+     hostname -I | awk '{print $1}'
+     ```
+     It prints one address like `192.168.1.50` — use that (so: `http://192.168.1.50/`).
 2. Log in with the email + password from Part 9.
 3. A **6‑digit code** is emailed to your Gmail — type it in to finish logging in.
    (No email? Check your spam folder and see Troubleshooting.)
