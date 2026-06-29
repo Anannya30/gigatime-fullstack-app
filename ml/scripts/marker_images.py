@@ -40,7 +40,7 @@ from pathlib import Path
 import numpy as np
 import openslide
 import torch
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
@@ -149,16 +149,36 @@ def streaming_thumbnail(slide, out_w, out_h, strip_px=1024):
     return (acc / np.maximum(cnt, 1.0)[..., None]).astype(np.float32)
 
 
-def contact_sheet(images, cols=5, thumb_w=520):
+def _label_font(size):
+    """A readable TrueType font, falling back to PIL's bitmap default if no
+    TrueType is installed in the container."""
+    for name in ("DejaVuSans-Bold.ttf", "DejaVuSans.ttf", "Arial.ttf"):
+        try:
+            return ImageFont.truetype(name, size)
+        except OSError:
+            continue
+    return ImageFont.load_default()
+
+
+def contact_sheet(images, labels, cols=5, thumb_w=520):
     """Tile all marker images into one grid for a quick overview. Tiles are
-    downscaled to thumb_w px wide so the sheet stays small and easy to open."""
+    downscaled to thumb_w px wide so the sheet stays small and easy to open.
+    Each tile gets its own readable label band drawn at sheet resolution -- the
+    per-image title strip is baked in at full res, so it shrinks to a few
+    illegible pixels once the tile is downscaled, hence the re-draw here."""
     scale = thumb_w / images[0].width
     tw, th = thumb_w, max(1, round(images[0].height * scale))
+    band_h = 34
+    font = _label_font(22)
     thumbs = [im.resize((tw, th), Image.BILINEAR) for im in images]
     rows = (len(images) + cols - 1) // cols
-    sheet = Image.new("RGB", (cols * tw, rows * th), (10, 10, 10))
+    sheet = Image.new("RGB", (cols * tw, rows * (th + band_h)), (10, 10, 10))
+    draw = ImageDraw.Draw(sheet)
     for i, im in enumerate(thumbs):
-        sheet.paste(im, ((i % cols) * tw, (i // cols) * th))
+        x = (i % cols) * tw
+        y = (i // cols) * (th + band_h)
+        draw.text((x + 8, y + 7), labels[i], fill=(255, 255, 255), font=font)
+        sheet.paste(im, (x, y + band_h))
     return sheet
 
 
@@ -170,11 +190,16 @@ def main():
                     help="microns-per-pixel override (use 0.20 for these slides)")
     ap.add_argument("--max-side", type=int, default=4000,
                     help="longest side of the output images in pixels")
+    ap.add_argument("--name", default=None,
+                    help="output filename prefix (e.g. the original uploaded "
+                         "name like 'slide1'); defaults to the slide file's stem")
     args = ap.parse_args()
 
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    stem = Path(args.slide).stem
+    # On-disk slides are stored under a UUID, so default to that stem but let the
+    # caller pass the friendly uploaded name (e.g. --name slide1) for readable files.
+    stem = args.name or Path(args.slide).stem
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     if device.type != "cuda":
@@ -240,7 +265,8 @@ def main():
         png_paths.append(p)
 
     sheet_path = out_dir / f"{stem}_markers_contact_sheet.png"
-    contact_sheet(images).save(sheet_path)
+    sheet_labels = [f"{name}  {pct_by_name[name]:.2f}%" for name in KEEP_NAMES]
+    contact_sheet(images, sheet_labels).save(sheet_path)
 
     zip_path = out_dir / f"{stem}_markers.zip"
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as z:
